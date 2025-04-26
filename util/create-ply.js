@@ -14,11 +14,8 @@ KSplatLoader.loadFromFileData = function (fileData) {
 
 async function encode(fileData) {
   const splatBuffer = await KSplatLoader.loadFromFileData(fileData);
-  const plyBuffer = PlayCanvasCompressedPlyEncoder.encodeSplatBufferToPly(
-    splatBuffer,
-    256,
-    5.0
-  );
+  const plyBuffer =
+    PlayCanvasCompressedPlyEncoder.encodeToCompressedPly(splatBuffer);
 
   return plyBuffer;
 }
