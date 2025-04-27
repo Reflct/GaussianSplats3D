@@ -1,21 +1,23 @@
-import { UncompressedSplatArray } from '../UncompressedSplatArray.js';
-import { SplatBuffer } from '../SplatBuffer.js';
-import { clamp } from '../../Util.js';
-import * as THREE from 'three';
+import { UncompressedSplatArray } from "../UncompressedSplatArray.js";
+import { SplatBuffer } from "../SplatBuffer.js";
+import { clamp } from "../../Util.js";
+import * as THREE from "three";
 
 const HeaderMagicBytes = new Uint8Array([112, 108, 121, 10]);
-const HeaderEndTokenBytes = new Uint8Array([10, 101, 110, 100, 95, 104, 101, 97, 100, 101, 114, 10]);
-const HeaderEndToken = 'end_header';
+const HeaderEndTokenBytes = new Uint8Array([
+  10, 101, 110, 100, 95, 104, 101, 97, 100, 101, 114, 10,
+]);
+const HeaderEndToken = "end_header";
 
 const DataTypeMap = new Map([
-  ['char', Int8Array],
-  ['uchar', Uint8Array],
-  ['short', Int16Array],
-  ['ushort', Uint16Array],
-  ['int', Int32Array],
-  ['uint', Uint32Array],
-  ['float', Float32Array],
-  ['double', Float64Array],
+  ["char", Int8Array],
+  ["uchar", Uint8Array],
+  ["short", Int16Array],
+  ["ushort", Uint16Array],
+  ["int", Int32Array],
+  ["uint", Uint32Array],
+  ["float", Float32Array],
+  ["double", Float64Array],
 ]);
 
 const unpackUnorm = (value, bits) => {
@@ -65,44 +67,43 @@ const lerp = (a, b, t) => {
 };
 
 const getElementPropStorage = (element, name) => {
-  return element.properties.find((p) => p.name === name && p.storage)
-    ?.storage;
+  return element.properties.find((p) => p.name === name && p.storage)?.storage;
 };
 
 export class PlayCanvasCompressedPlyParser {
-
   static decodeHeaderText(headerText) {
-
     let element;
     let chunkElement;
     let vertexElement;
     let shElement;
 
-    const headerLines = headerText.split('\n').filter((line) => !line.startsWith('comment '));
+    const headerLines = headerText
+      .split("\n")
+      .filter((line) => !line.startsWith("comment "));
 
     let bytesPerSplat = 0;
     let done = false;
     for (let i = 1; i < headerLines.length; ++i) {
-      const words = headerLines[i].split(' ');
+      const words = headerLines[i].split(" ");
 
       switch (words[0]) {
-        case 'format':
-          if (words[1] !== 'binary_little_endian') {
-            throw new Error('Unsupported ply format');
+        case "format":
+          if (words[1] !== "binary_little_endian") {
+            throw new Error("Unsupported ply format");
           }
           break;
-        case 'element':
+        case "element":
           element = {
             name: words[1],
             count: parseInt(words[2], 10),
             properties: [],
-            storageSizeBytes: 0
+            storageSizeBytes: 0,
           };
-          if (element.name === 'chunk') chunkElement = element;
-          else if (element.name === 'vertex') vertexElement = element;
-          else if (element.name === 'sh') shElement = element;
+          if (element.name === "chunk") chunkElement = element;
+          else if (element.name === "vertex") vertexElement = element;
+          else if (element.name === "sh") shElement = element;
           break;
-        case 'property': {
+        case "property": {
           if (!DataTypeMap.has(words[1])) {
             throw new Error(
               `Unrecognized property data type '${words[1]}' in ply header`
@@ -110,20 +111,21 @@ export class PlayCanvasCompressedPlyParser {
           }
           const StorageType = DataTypeMap.get(words[1]);
           const storageSizeByes = StorageType.BYTES_PER_ELEMENT * element.count;
-          if (element.name === 'vertex') bytesPerSplat += StorageType.BYTES_PER_ELEMENT;
+          if (element.name === "vertex")
+            bytesPerSplat += StorageType.BYTES_PER_ELEMENT;
           element.properties.push({
             type: words[1],
             name: words[2],
             storage: null,
             byteSize: StorageType.BYTES_PER_ELEMENT,
-            storageSizeByes: storageSizeByes
+            storageSizeByes: storageSizeByes,
           });
           element.storageSizeBytes += storageSizeByes;
           break;
         }
         case HeaderEndToken:
           done = true;
-        break;
+          break;
         default:
           throw new Error(
             `Unrecognized header value '${words[0]}' in ply header`
@@ -146,18 +148,18 @@ export class PlayCanvasCompressedPlyParser {
     }
 
     return {
-      'chunkElement': chunkElement,
-      'vertexElement': vertexElement,
-      'shElement': shElement,
-      'bytesPerSplat': bytesPerSplat,
-      'headerSizeBytes': headerText.indexOf(HeaderEndToken) + HeaderEndToken.length + 1,
-      'sphericalHarmonicsDegree': sphericalHarmonicsDegree,
-      'sphericalHarmonicsPerSplat': sphericalHarmonicsPerSplat
+      chunkElement: chunkElement,
+      vertexElement: vertexElement,
+      shElement: shElement,
+      bytesPerSplat: bytesPerSplat,
+      headerSizeBytes:
+        headerText.indexOf(HeaderEndToken) + HeaderEndToken.length + 1,
+      sphericalHarmonicsDegree: sphericalHarmonicsDegree,
+      sphericalHarmonicsPerSplat: sphericalHarmonicsPerSplat,
     };
   }
 
   static decodeHeader(plyBuffer) {
-
     /**
      * Searches for the first occurrence of a sequence within a buffer.
      * @example
@@ -208,16 +210,19 @@ export class PlayCanvasCompressedPlyParser {
     let buf = new Uint8Array(plyBuffer);
     let endHeaderTokenOffset;
 
-    if (buf.length >= HeaderMagicBytes.length && !startsWith(buf, HeaderMagicBytes)) {
-      throw new Error('Invalid PLY header');
+    if (
+      buf.length >= HeaderMagicBytes.length &&
+      !startsWith(buf, HeaderMagicBytes)
+    ) {
+      throw new Error("Invalid PLY header");
     }
 
     endHeaderTokenOffset = find(buf, HeaderEndTokenBytes);
     if (endHeaderTokenOffset === -1) {
-      throw new Error('End of PLY header not found');
+      throw new Error("End of PLY header not found");
     }
 
-    const headerText = new TextDecoder('ascii').decode(
+    const headerText = new TextDecoder("ascii").decode(
       buf.slice(0, endHeaderTokenOffset)
     );
 
@@ -227,23 +232,30 @@ export class PlayCanvasCompressedPlyParser {
       shElement,
       sphericalHarmonicsDegree,
       sphericalHarmonicsPerSplat,
-      bytesPerSplat
+      bytesPerSplat,
     } = PlayCanvasCompressedPlyParser.decodeHeaderText(headerText);
 
     return {
-      'headerSizeBytes': endHeaderTokenOffset + HeaderEndTokenBytes.length,
-      'bytesPerSplat': bytesPerSplat,
-      'chunkElement': chunkElement,
-      'vertexElement': vertexElement,
-      'shElement': shElement,
-      'sphericalHarmonicsDegree': sphericalHarmonicsDegree,
-      'sphericalHarmonicsPerSplat': sphericalHarmonicsPerSplat
+      headerSizeBytes: endHeaderTokenOffset + HeaderEndTokenBytes.length,
+      bytesPerSplat: bytesPerSplat,
+      chunkElement: chunkElement,
+      vertexElement: vertexElement,
+      shElement: shElement,
+      sphericalHarmonicsDegree: sphericalHarmonicsDegree,
+      sphericalHarmonicsPerSplat: sphericalHarmonicsPerSplat,
     };
   }
 
-  static readElementData(element, readBuffer, readOffset, fromIndex, toIndex, propertyFilter = null) {
-
-    let dataView = readBuffer instanceof DataView ? readBuffer : new DataView(readBuffer);
+  static readElementData(
+    element,
+    readBuffer,
+    readOffset,
+    fromIndex,
+    toIndex,
+    propertyFilter = null
+  ) {
+    let dataView =
+      readBuffer instanceof DataView ? readBuffer : new DataView(readBuffer);
 
     fromIndex = fromIndex || 0;
     toIndex = toIndex || element.count - 1;
@@ -252,36 +264,40 @@ export class PlayCanvasCompressedPlyParser {
         const property = element.properties[j];
 
         const StorageType = DataTypeMap.get(property.type);
-        const requiredStorageSizeBytes = StorageType.BYTES_PER_ELEMENT * element.count;
-        if ((!property.storage || property.storage.byteLength < requiredStorageSizeBytes) &&
-            (!propertyFilter || propertyFilter(property.name))) {
+        const requiredStorageSizeBytes =
+          StorageType.BYTES_PER_ELEMENT * element.count;
+        if (
+          (!property.storage ||
+            property.storage.byteLength < requiredStorageSizeBytes) &&
+          (!propertyFilter || propertyFilter(property.name))
+        ) {
           property.storage = new StorageType(element.count);
         }
 
         if (property.storage) {
           switch (property.type) {
-            case 'char':
+            case "char":
               property.storage[e] = dataView.getInt8(readOffset);
               break;
-            case 'uchar':
+            case "uchar":
               property.storage[e] = dataView.getUint8(readOffset);
               break;
-            case 'short':
+            case "short":
               property.storage[e] = dataView.getInt16(readOffset, true);
               break;
-            case 'ushort':
+            case "ushort":
               property.storage[e] = dataView.getUint16(readOffset, true);
               break;
-            case 'int':
+            case "int":
               property.storage[e] = dataView.getInt32(readOffset, true);
               break;
-            case 'uint':
+            case "uint":
               property.storage[e] = dataView.getUint32(readOffset, true);
               break;
-            case 'float':
+            case "float":
               property.storage[e] = dataView.getFloat32(readOffset, true);
               break;
-            case 'double':
+            case "double":
               property.storage[e] = dataView.getFloat64(readOffset, true);
               break;
           }
@@ -295,20 +311,39 @@ export class PlayCanvasCompressedPlyParser {
   }
 
   static readPly(plyBuffer, propertyFilter = null) {
-
     const header = PlayCanvasCompressedPlyParser.decodeHeader(plyBuffer);
 
-    let readIndex = PlayCanvasCompressedPlyParser.readElementData(header.chunkElement, plyBuffer,
-                                                                  header.headerSizeBytes, null, null, propertyFilter);
-    readIndex = PlayCanvasCompressedPlyParser.readElementData(header.vertexElement, plyBuffer, readIndex, null, null, propertyFilter);
-    PlayCanvasCompressedPlyParser.readElementData(header.shElement, plyBuffer, readIndex, null, null, propertyFilter);
+    let readIndex = PlayCanvasCompressedPlyParser.readElementData(
+      header.chunkElement,
+      plyBuffer,
+      header.headerSizeBytes,
+      null,
+      null,
+      propertyFilter
+    );
+    readIndex = PlayCanvasCompressedPlyParser.readElementData(
+      header.vertexElement,
+      plyBuffer,
+      readIndex,
+      null,
+      null,
+      propertyFilter
+    );
+    PlayCanvasCompressedPlyParser.readElementData(
+      header.shElement,
+      plyBuffer,
+      readIndex,
+      null,
+      null,
+      propertyFilter
+    );
 
     return {
-      'chunkElement': header.chunkElement,
-      'vertexElement': header.vertexElement,
-      'shElement': header.shElement,
-      'sphericalHarmonicsDegree': header.sphericalHarmonicsDegree,
-      'sphericalHarmonicsPerSplat': header.sphericalHarmonicsPerSplat
+      chunkElement: header.chunkElement,
+      vertexElement: header.vertexElement,
+      shElement: header.shElement,
+      sphericalHarmonicsDegree: header.sphericalHarmonicsDegree,
+      sphericalHarmonicsPerSplat: header.sphericalHarmonicsPerSplat,
     };
   }
 
@@ -316,47 +351,57 @@ export class PlayCanvasCompressedPlyParser {
     const storageArrays = {};
 
     if (vertexElement) {
-      const minR = getElementPropStorage(chunkElement, 'min_r');
-      const minG = getElementPropStorage(chunkElement, 'min_g');
-      const minB = getElementPropStorage(chunkElement, 'min_b');
-      const maxR = getElementPropStorage(chunkElement, 'max_r');
-      const maxG = getElementPropStorage(chunkElement, 'max_g');
-      const maxB = getElementPropStorage(chunkElement, 'max_b');
-      const minX = getElementPropStorage(chunkElement, 'min_x');
-      const minY = getElementPropStorage(chunkElement, 'min_y');
-      const minZ = getElementPropStorage(chunkElement, 'min_z');
-      const maxX = getElementPropStorage(chunkElement, 'max_x');
-      const maxY = getElementPropStorage(chunkElement, 'max_y');
-      const maxZ = getElementPropStorage(chunkElement, 'max_z');
-      const minScaleX = getElementPropStorage(chunkElement, 'min_scale_x');
-      const minScaleY = getElementPropStorage(chunkElement, 'min_scale_y');
-      const minScaleZ = getElementPropStorage(chunkElement, 'min_scale_z');
-      const maxScaleX = getElementPropStorage(chunkElement, 'max_scale_x');
-      const maxScaleY = getElementPropStorage(chunkElement, 'max_scale_y');
-      const maxScaleZ = getElementPropStorage(chunkElement, 'max_scale_z');
-      const position = getElementPropStorage(vertexElement, 'packed_position');
-      const rotation = getElementPropStorage(vertexElement, 'packed_rotation');
-      const scale = getElementPropStorage(vertexElement, 'packed_scale');
-      const color = getElementPropStorage(vertexElement, 'packed_color');
+      const minR = getElementPropStorage(chunkElement, "min_r");
+      const minG = getElementPropStorage(chunkElement, "min_g");
+      const minB = getElementPropStorage(chunkElement, "min_b");
+      const maxR = getElementPropStorage(chunkElement, "max_r");
+      const maxG = getElementPropStorage(chunkElement, "max_g");
+      const maxB = getElementPropStorage(chunkElement, "max_b");
+      const minX = getElementPropStorage(chunkElement, "min_x");
+      const minY = getElementPropStorage(chunkElement, "min_y");
+      const minZ = getElementPropStorage(chunkElement, "min_z");
+      const maxX = getElementPropStorage(chunkElement, "max_x");
+      const maxY = getElementPropStorage(chunkElement, "max_y");
+      const maxZ = getElementPropStorage(chunkElement, "max_z");
+      const minScaleX = getElementPropStorage(chunkElement, "min_scale_x");
+      const minScaleY = getElementPropStorage(chunkElement, "min_scale_y");
+      const minScaleZ = getElementPropStorage(chunkElement, "min_scale_z");
+      const maxScaleX = getElementPropStorage(chunkElement, "max_scale_x");
+      const maxScaleY = getElementPropStorage(chunkElement, "max_scale_y");
+      const maxScaleZ = getElementPropStorage(chunkElement, "max_scale_z");
+      const position = getElementPropStorage(vertexElement, "packed_position");
+      const rotation = getElementPropStorage(vertexElement, "packed_rotation");
+      const scale = getElementPropStorage(vertexElement, "packed_scale");
+      const color = getElementPropStorage(vertexElement, "packed_color");
 
-      storageArrays['colorExtremes'] = {
-        minR, maxR,
-        minG, maxG,
-        minB, maxB
+      storageArrays["colorExtremes"] = {
+        minR,
+        maxR,
+        minG,
+        maxG,
+        minB,
+        maxB,
       };
-      storageArrays['positionExtremes'] = {
-        minX, maxX,
-        minY, maxY,
-        minZ, maxZ
+      storageArrays["positionExtremes"] = {
+        minX,
+        maxX,
+        minY,
+        maxY,
+        minZ,
+        maxZ,
       };
-      storageArrays['scaleExtremes'] = {
-        minScaleX, maxScaleX, minScaleY,
-        maxScaleY, minScaleZ, maxScaleZ
+      storageArrays["scaleExtremes"] = {
+        minScaleX,
+        maxScaleX,
+        minScaleY,
+        maxScaleY,
+        minScaleZ,
+        maxScaleZ,
       };
-      storageArrays['position'] = position;
-      storageArrays['rotation'] = rotation;
-      storageArrays['scale'] = scale;
-      storageArrays['color'] = color;
+      storageArrays["position"] = position;
+      storageArrays["rotation"] = rotation;
+      storageArrays["scale"] = scale;
+      storageArrays["color"] = color;
     }
 
     if (shElement) {
@@ -370,14 +415,13 @@ export class PlayCanvasCompressedPlyParser {
           break;
         }
       }
-      storageArrays['sh'] = shStorageArrays;
+      storageArrays["sh"] = shStorageArrays;
     }
 
     return storageArrays;
   }
 
-  static decompressBaseSplat = function() {
-
+  static decompressBaseSplat = (function () {
     const p = new THREE.Vector3();
     const r = new THREE.Quaternion();
     const s = new THREE.Vector3();
@@ -385,8 +429,18 @@ export class PlayCanvasCompressedPlyParser {
 
     const OFFSET = UncompressedSplatArray.OFFSET;
 
-    return function(index, chunkSplatIndexOffset, positionArray, positionExtremes, scaleArray, scaleExtremes,
-                    rotationArray, colorExtremes, colorArray, outSplat) {
+    return function (
+      index,
+      chunkSplatIndexOffset,
+      positionArray,
+      positionExtremes,
+      scaleArray,
+      scaleExtremes,
+      rotationArray,
+      colorExtremes,
+      colorArray,
+      outSplat
+    ) {
       outSplat = outSplat || UncompressedSplatArray.createSplat();
 
       const chunkIndex = Math.floor((chunkSplatIndexOffset + index) / 256);
@@ -396,52 +450,107 @@ export class PlayCanvasCompressedPlyParser {
       unpack111011(s, scaleArray[index]);
       unpack8888(c, colorArray[index]);
 
-      outSplat[OFFSET.X] = lerp(positionExtremes.minX[chunkIndex], positionExtremes.maxX[chunkIndex], p.x);
-      outSplat[OFFSET.Y] = lerp(positionExtremes.minY[chunkIndex], positionExtremes.maxY[chunkIndex], p.y);
-      outSplat[OFFSET.Z] = lerp(positionExtremes.minZ[chunkIndex], positionExtremes.maxZ[chunkIndex], p.z);
+      // Denormalize color values back to [0,255] range
+      c.x *= 255;
+      c.y *= 255;
+      c.z *= 255;
+      c.w *= 255;
+
+      outSplat[OFFSET.X] = lerp(
+        positionExtremes.minX[chunkIndex],
+        positionExtremes.maxX[chunkIndex],
+        p.x
+      );
+      outSplat[OFFSET.Y] = lerp(
+        positionExtremes.minY[chunkIndex],
+        positionExtremes.maxY[chunkIndex],
+        p.y
+      );
+      outSplat[OFFSET.Z] = lerp(
+        positionExtremes.minZ[chunkIndex],
+        positionExtremes.maxZ[chunkIndex],
+        p.z
+      );
 
       outSplat[OFFSET.ROTATION0] = r.x;
       outSplat[OFFSET.ROTATION1] = r.y;
       outSplat[OFFSET.ROTATION2] = r.z;
       outSplat[OFFSET.ROTATION3] = r.w;
 
-      outSplat[OFFSET.SCALE0] = Math.exp(lerp(scaleExtremes.minScaleX[chunkIndex], scaleExtremes.maxScaleX[chunkIndex], s.x));
-      outSplat[OFFSET.SCALE1] = Math.exp(lerp(scaleExtremes.minScaleY[chunkIndex], scaleExtremes.maxScaleY[chunkIndex], s.y));
-      outSplat[OFFSET.SCALE2] = Math.exp(lerp(scaleExtremes.minScaleZ[chunkIndex], scaleExtremes.maxScaleZ[chunkIndex], s.z));
+      outSplat[OFFSET.SCALE0] = Math.exp(
+        Math.log(scaleExtremes.minScaleX[chunkIndex]) +
+          s.x *
+            (Math.log(scaleExtremes.maxScaleX[chunkIndex]) -
+              Math.log(scaleExtremes.minScaleX[chunkIndex]))
+      );
+      outSplat[OFFSET.SCALE1] = Math.exp(
+        Math.log(scaleExtremes.minScaleY[chunkIndex]) +
+          s.y *
+            (Math.log(scaleExtremes.maxScaleY[chunkIndex]) -
+              Math.log(scaleExtremes.minScaleY[chunkIndex]))
+      );
+      outSplat[OFFSET.SCALE2] = Math.exp(
+        Math.log(scaleExtremes.minScaleZ[chunkIndex]) +
+          s.z *
+            (Math.log(scaleExtremes.maxScaleZ[chunkIndex]) -
+              Math.log(scaleExtremes.minScaleZ[chunkIndex]))
+      );
 
-      if (colorExtremes.minR && colorExtremes.maxR) {
-        outSplat[OFFSET.FDC0] = clamp(Math.round(lerp(colorExtremes.minR[chunkIndex], colorExtremes.maxR[chunkIndex], c.x) * 255), 0, 255);
-      } else {
-        outSplat[OFFSET.FDC0] = clamp(Math.floor(c.x * 255), 0, 255);
-      }
-      if (colorExtremes.minG && colorExtremes.maxG) {
-        outSplat[OFFSET.FDC1] = clamp(Math.round(lerp(colorExtremes.minG[chunkIndex], colorExtremes.maxG[chunkIndex], c.y) * 255), 0, 255);
-      } else {
-        outSplat[OFFSET.FDC1] = clamp(Math.floor(c.y * 255), 0, 255);
-      }
-      if (colorExtremes.minB && colorExtremes.maxB) {
-        outSplat[OFFSET.FDC2] = clamp(Math.round(lerp(colorExtremes.minB[chunkIndex], colorExtremes.maxB[chunkIndex], c.z) * 255), 0, 255);
-      } else {
-        outSplat[OFFSET.FDC2] = clamp(Math.floor(c.z * 255), 0, 255);
-      }
+      outSplat[OFFSET.FDC0] = clamp(
+        Math.round(
+          lerp(
+            colorExtremes.minR[chunkIndex],
+            colorExtremes.maxR[chunkIndex],
+            c.x
+          )
+        ),
+        0,
+        255
+      );
+      outSplat[OFFSET.FDC1] = clamp(
+        Math.round(
+          lerp(
+            colorExtremes.minG[chunkIndex],
+            colorExtremes.maxG[chunkIndex],
+            c.y
+          )
+        ),
+        0,
+        255
+      );
+      outSplat[OFFSET.FDC2] = clamp(
+        Math.round(
+          lerp(
+            colorExtremes.minB[chunkIndex],
+            colorExtremes.maxB[chunkIndex],
+            c.z
+          )
+        ),
+        0,
+        255
+      );
       outSplat[OFFSET.OPACITY] = clamp(Math.floor(c.w * 255), 0, 255);
 
       return outSplat;
     };
+  })();
 
-  }();
-
-  static decompressSphericalHarmonics = function() {
-
+  static decompressSphericalHarmonics = (function () {
     const shCoeffMap = [0, 3, 8, 15];
 
     const shIndexMap = [
-      0, 1, 2, 9, 10, 11, 12, 13, 24, 25, 26, 27, 28, 29, 30,
-      3, 4, 5, 14, 15, 16, 17, 18, 31, 32, 33, 34, 35, 36, 37,
-      6, 7, 8, 19, 20, 21, 22, 23, 38, 39, 40, 41, 42, 43, 44
+      0, 1, 2, 9, 10, 11, 12, 13, 24, 25, 26, 27, 28, 29, 30, 3, 4, 5, 14, 15,
+      16, 17, 18, 31, 32, 33, 34, 35, 36, 37, 6, 7, 8, 19, 20, 21, 22, 23, 38,
+      39, 40, 41, 42, 43, 44,
     ];
 
-    return function(index, shArray, outSphericalHarmonicsDegree, readSphericalHarmonicsDegree, outSplat) {
+    return function (
+      index,
+      shArray,
+      outSphericalHarmonicsDegree,
+      readSphericalHarmonicsDegree,
+      outSplat
+    ) {
       outSplat = outSplat || UncompressedSplatArray.createSplat();
       let outSHCoeff = shCoeffMap[outSphericalHarmonicsDegree];
       let readSHCoeff = shCoeffMap[readSphericalHarmonicsDegree];
@@ -449,94 +558,227 @@ export class PlayCanvasCompressedPlyParser {
         for (let k = 0; k < 15; ++k) {
           const outIndex = shIndexMap[j * 15 + k];
           if (k < outSHCoeff && k < readSHCoeff) {
-            outSplat[UncompressedSplatArray.OFFSET.FRC0 + outIndex] = (shArray[j * readSHCoeff + k][index] * (8 / 255) - 4);
+            const value = shArray[j * readSHCoeff + k][index];
+            outSplat[UncompressedSplatArray.OFFSET.FRC0 + outIndex] =
+              (value / 255) * 8 - 4;
           }
         }
       }
 
       return outSplat;
     };
+  })();
 
-  }();
+  static parseToUncompressedSplatBufferSection(
+    chunkElement,
+    vertexElement,
+    fromIndex,
+    toIndex,
+    chunkSplatIndexOffset,
+    vertexDataBuffer,
+    outBuffer,
+    outOffset,
+    propertyFilter = null
+  ) {
+    PlayCanvasCompressedPlyParser.readElementData(
+      vertexElement,
+      vertexDataBuffer,
+      0,
+      fromIndex,
+      toIndex,
+      propertyFilter
+    );
 
-  static parseToUncompressedSplatBufferSection(chunkElement, vertexElement, fromIndex, toIndex, chunkSplatIndexOffset,
-                                               vertexDataBuffer, outBuffer, outOffset, propertyFilter = null) {
+    const outBytesPerSplat =
+      SplatBuffer.CompressionLevels[0].SphericalHarmonicsDegrees[0]
+        .BytesPerSplat;
 
-    PlayCanvasCompressedPlyParser.readElementData(vertexElement, vertexDataBuffer, 0, fromIndex, toIndex, propertyFilter);
-
-    const outBytesPerSplat = SplatBuffer.CompressionLevels[0].SphericalHarmonicsDegrees[0].BytesPerSplat;
-
-    const { positionExtremes, scaleExtremes, colorExtremes, position, rotation, scale, color } =
-      PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, vertexElement);
+    const {
+      positionExtremes,
+      scaleExtremes,
+      colorExtremes,
+      position,
+      rotation,
+      scale,
+      color,
+    } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+      chunkElement,
+      vertexElement
+    );
 
     const tempSplat = UncompressedSplatArray.createSplat();
 
     for (let i = fromIndex; i <= toIndex; ++i) {
-      PlayCanvasCompressedPlyParser.decompressBaseSplat(i, chunkSplatIndexOffset, position, positionExtremes,
-                                                        scale, scaleExtremes, rotation, colorExtremes, color, tempSplat);
+      PlayCanvasCompressedPlyParser.decompressBaseSplat(
+        i,
+        chunkSplatIndexOffset,
+        position,
+        positionExtremes,
+        scale,
+        scaleExtremes,
+        rotation,
+        colorExtremes,
+        color,
+        tempSplat
+      );
       const outBase = i * outBytesPerSplat + outOffset;
-      SplatBuffer.writeSplatDataToSectionBuffer(tempSplat, outBuffer, outBase, 0, 0);
+      SplatBuffer.writeSplatDataToSectionBuffer(
+        tempSplat,
+        outBuffer,
+        outBase,
+        0,
+        0
+      );
     }
   }
 
-  static parseToUncompressedSplatArraySection(chunkElement, vertexElement, fromIndex, toIndex, chunkSplatIndexOffset,
-                                              vertexDataBuffer, splatArray, propertyFilter = null) {
+  static parseToUncompressedSplatArraySection(
+    chunkElement,
+    vertexElement,
+    fromIndex,
+    toIndex,
+    chunkSplatIndexOffset,
+    vertexDataBuffer,
+    splatArray,
+    propertyFilter = null
+  ) {
+    PlayCanvasCompressedPlyParser.readElementData(
+      vertexElement,
+      vertexDataBuffer,
+      0,
+      fromIndex,
+      toIndex,
+      propertyFilter
+    );
 
-    PlayCanvasCompressedPlyParser.readElementData(vertexElement, vertexDataBuffer, 0, fromIndex, toIndex, propertyFilter);
-
-    const { positionExtremes, scaleExtremes, colorExtremes, position, rotation, scale, color } =
-      PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, vertexElement);
+    const {
+      positionExtremes,
+      scaleExtremes,
+      colorExtremes,
+      position,
+      rotation,
+      scale,
+      color,
+    } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+      chunkElement,
+      vertexElement
+    );
 
     for (let i = fromIndex; i <= toIndex; ++i) {
       const tempSplat = UncompressedSplatArray.createSplat();
-      PlayCanvasCompressedPlyParser.decompressBaseSplat(i, chunkSplatIndexOffset, position, positionExtremes,
-                                                        scale, scaleExtremes, rotation, colorExtremes, color, tempSplat);
+      PlayCanvasCompressedPlyParser.decompressBaseSplat(
+        i,
+        chunkSplatIndexOffset,
+        position,
+        positionExtremes,
+        scale,
+        scaleExtremes,
+        rotation,
+        colorExtremes,
+        color,
+        tempSplat
+      );
       splatArray.addSplat(tempSplat);
     }
   }
 
-  static parseSphericalHarmonicsToUncompressedSplatArraySection(chunkElement, shElement, fromIndex, toIndex,
-    vertexDataBuffer, vertexReadOffset, outSphericalHarmonicsDegree, readSphericalHarmonicsDegree, splatArray, propertyFilter = null) {
+  static parseSphericalHarmonicsToUncompressedSplatArraySection(
+    chunkElement,
+    shElement,
+    fromIndex,
+    toIndex,
+    vertexDataBuffer,
+    vertexReadOffset,
+    outSphericalHarmonicsDegree,
+    readSphericalHarmonicsDegree,
+    splatArray,
+    propertyFilter = null
+  ) {
+    PlayCanvasCompressedPlyParser.readElementData(
+      shElement,
+      vertexDataBuffer,
+      vertexReadOffset,
+      fromIndex,
+      toIndex,
+      propertyFilter
+    );
 
-    PlayCanvasCompressedPlyParser.readElementData(shElement, vertexDataBuffer, vertexReadOffset, fromIndex, toIndex, propertyFilter);
-
-    const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, undefined, shElement);
+    const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+      chunkElement,
+      undefined,
+      shElement
+    );
     const shArrays = Object.values(sh);
 
     for (let i = fromIndex; i <= toIndex; ++i) {
       PlayCanvasCompressedPlyParser.decompressSphericalHarmonics(
-        i, shArrays, outSphericalHarmonicsDegree, readSphericalHarmonicsDegree, splatArray.splats[i]
+        i,
+        shArrays,
+        outSphericalHarmonicsDegree,
+        readSphericalHarmonicsDegree,
+        splatArray.splats[i]
       );
     }
   }
 
   static parseToUncompressedSplatArray(plyBuffer, outSphericalHarmonicsDegree) {
-    const { chunkElement, vertexElement, shElement, sphericalHarmonicsDegree } = PlayCanvasCompressedPlyParser.readPly(plyBuffer);
+    const { chunkElement, vertexElement, shElement, sphericalHarmonicsDegree } =
+      PlayCanvasCompressedPlyParser.readPly(plyBuffer);
 
-    outSphericalHarmonicsDegree = Math.min(outSphericalHarmonicsDegree, sphericalHarmonicsDegree);
+    outSphericalHarmonicsDegree = Math.min(
+      outSphericalHarmonicsDegree,
+      sphericalHarmonicsDegree
+    );
 
     const splatArray = new UncompressedSplatArray(outSphericalHarmonicsDegree);
 
-    const { positionExtremes, scaleExtremes, colorExtremes, position, rotation, scale, color } =
-      PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, vertexElement);
+    const {
+      positionExtremes,
+      scaleExtremes,
+      colorExtremes,
+      position,
+      rotation,
+      scale,
+      color,
+    } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+      chunkElement,
+      vertexElement
+    );
 
     let shArrays;
     if (outSphericalHarmonicsDegree > 0) {
-      const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, undefined, shElement);
+      const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+        chunkElement,
+        undefined,
+        shElement
+      );
       shArrays = Object.values(sh);
     }
 
     for (let i = 0; i < vertexElement.count; ++i) {
-
       splatArray.addDefaultSplat();
       const newSplat = splatArray.getSplat(splatArray.splatCount - 1);
 
-      PlayCanvasCompressedPlyParser.decompressBaseSplat(i, 0, position, positionExtremes, scale,
-                                                        scaleExtremes, rotation, colorExtremes, color, newSplat);
+      PlayCanvasCompressedPlyParser.decompressBaseSplat(
+        i,
+        0,
+        position,
+        positionExtremes,
+        scale,
+        scaleExtremes,
+        rotation,
+        colorExtremes,
+        color,
+        newSplat
+      );
 
       if (outSphericalHarmonicsDegree > 0) {
         PlayCanvasCompressedPlyParser.decompressSphericalHarmonics(
-          i, shArrays, outSphericalHarmonicsDegree, sphericalHarmonicsDegree, newSplat
+          i,
+          shArrays,
+          outSphericalHarmonicsDegree,
+          sphericalHarmonicsDegree,
+          newSplat
         );
       }
     }
@@ -544,44 +786,89 @@ export class PlayCanvasCompressedPlyParser {
     return splatArray;
   }
 
-  static parseToUncompressedSplatBuffer(plyBuffer, outSphericalHarmonicsDegree) {
-    const { chunkElement, vertexElement, shElement, sphericalHarmonicsDegree } = PlayCanvasCompressedPlyParser.readPly(plyBuffer);
+  static parseToUncompressedSplatBuffer(
+    plyBuffer,
+    outSphericalHarmonicsDegree
+  ) {
+    const { chunkElement, vertexElement, shElement, sphericalHarmonicsDegree } =
+      PlayCanvasCompressedPlyParser.readPly(plyBuffer);
 
-    outSphericalHarmonicsDegree = Math.min(outSphericalHarmonicsDegree, sphericalHarmonicsDegree);
+    outSphericalHarmonicsDegree = Math.min(
+      outSphericalHarmonicsDegree,
+      sphericalHarmonicsDegree
+    );
+
+    const { splatBuffer, splatBufferDataOffsetBytes } =
+      SplatBuffer.preallocateUncompressed(
+        vertexElement.count,
+        outSphericalHarmonicsDegree
+      );
 
     const {
-      splatBuffer,
-      splatBufferDataOffsetBytes
-    } = SplatBuffer.preallocateUncompressed(vertexElement.count, outSphericalHarmonicsDegree);
-
-    const { positionExtremes, scaleExtremes, colorExtremes, position, rotation, scale, color } =
-    PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, vertexElement);
+      positionExtremes,
+      scaleExtremes,
+      colorExtremes,
+      position,
+      rotation,
+      scale,
+      color,
+    } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+      chunkElement,
+      vertexElement
+    );
 
     let shArrays;
-    if (outSphericalHarmonicsDegree > 0) {
-      const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(chunkElement, undefined, shElement);
+    if (outSphericalHarmonicsDegree > 0 && shElement) {
+      const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+        chunkElement,
+        undefined,
+        shElement
+      );
       shArrays = Object.values(sh);
     }
 
-    const outBytesPerSplat = SplatBuffer.CompressionLevels[0].SphericalHarmonicsDegrees[outSphericalHarmonicsDegree].BytesPerSplat;
+    const outBytesPerSplat =
+      SplatBuffer.CompressionLevels[0].SphericalHarmonicsDegrees[
+        outSphericalHarmonicsDegree
+      ].BytesPerSplat;
 
-    const newSplat = UncompressedSplatArray.createSplat(outSphericalHarmonicsDegree);
+    const newSplat = UncompressedSplatArray.createSplat(
+      outSphericalHarmonicsDegree
+    );
 
     for (let i = 0; i < vertexElement.count; ++i) {
       PlayCanvasCompressedPlyParser.decompressBaseSplat(
-        i, 0, position, positionExtremes, scale, scaleExtremes, rotation, colorExtremes, color, newSplat
+        i,
+        0,
+        position,
+        positionExtremes,
+        scale,
+        scaleExtremes,
+        rotation,
+        colorExtremes,
+        color,
+        newSplat
       );
-      if (outSphericalHarmonicsDegree > 0) {
+      if (outSphericalHarmonicsDegree > 0 && shArrays) {
         PlayCanvasCompressedPlyParser.decompressSphericalHarmonics(
-          i, shArrays, outSphericalHarmonicsDegree, sphericalHarmonicsDegree, newSplat
+          i,
+          shArrays,
+          outSphericalHarmonicsDegree,
+          sphericalHarmonicsDegree,
+          newSplat
         );
       }
 
       const outBase = i * outBytesPerSplat + splatBufferDataOffsetBytes;
-      SplatBuffer.writeSplatDataToSectionBuffer(newSplat, splatBuffer.bufferData, outBase, 0, outSphericalHarmonicsDegree);
+      SplatBuffer.writeSplatDataToSectionBuffer(
+        newSplat,
+        splatBuffer.bufferData,
+        outBase,
+        0,
+        outSphericalHarmonicsDegree
+      );
     }
 
     return splatBuffer;
   }
-
 }

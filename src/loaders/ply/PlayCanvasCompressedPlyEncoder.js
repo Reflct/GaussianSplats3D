@@ -121,12 +121,12 @@ export class PlayCanvasCompressedPlyEncoder {
     const minScaleZ = new Float32Array(chunkCount);
     const maxScaleZ = new Float32Array(chunkCount);
 
-    const minR = new Uint8Array(chunkCount);
-    const maxR = new Uint8Array(chunkCount);
-    const minG = new Uint8Array(chunkCount);
-    const maxG = new Uint8Array(chunkCount);
-    const minB = new Uint8Array(chunkCount);
-    const maxB = new Uint8Array(chunkCount);
+    const minR = new Float32Array(chunkCount);
+    const maxR = new Float32Array(chunkCount);
+    const minG = new Float32Array(chunkCount);
+    const maxG = new Float32Array(chunkCount);
+    const minB = new Float32Array(chunkCount);
+    const maxB = new Float32Array(chunkCount);
 
     // Initialize min/max arrays
     for (let i = 0; i < chunkCount; i++) {
@@ -144,12 +144,12 @@ export class PlayCanvasCompressedPlyEncoder {
       minScaleZ[i] = Infinity;
       maxScaleZ[i] = -Infinity;
 
-      minR[i] = 255;
-      maxR[i] = 0;
-      minG[i] = 255;
-      maxG[i] = 0;
-      minB[i] = 255;
-      maxB[i] = 0;
+      minR[i] = 255.0;
+      maxR[i] = 0.0;
+      minG[i] = 255.0;
+      maxG[i] = 0.0;
+      minB[i] = 255.0;
+      maxB[i] = 0.0;
     }
 
     // First pass: collect min/max values for each chunk
@@ -175,32 +175,14 @@ export class PlayCanvasCompressedPlyEncoder {
       maxZ[chunkIndex] = Math.max(maxZ[chunkIndex], center.z);
 
       // Update min/max for scale
-      minScaleX[chunkIndex] = Math.min(
-        minScaleX[chunkIndex],
-        Math.log(scaleVec.x)
-      );
-      maxScaleX[chunkIndex] = Math.max(
-        maxScaleX[chunkIndex],
-        Math.log(scaleVec.x)
-      );
-      minScaleY[chunkIndex] = Math.min(
-        minScaleY[chunkIndex],
-        Math.log(scaleVec.y)
-      );
-      maxScaleY[chunkIndex] = Math.max(
-        maxScaleY[chunkIndex],
-        Math.log(scaleVec.y)
-      );
-      minScaleZ[chunkIndex] = Math.min(
-        minScaleZ[chunkIndex],
-        Math.log(scaleVec.z)
-      );
-      maxScaleZ[chunkIndex] = Math.max(
-        maxScaleZ[chunkIndex],
-        Math.log(scaleVec.z)
-      );
+      minScaleX[chunkIndex] = Math.min(minScaleX[chunkIndex], scaleVec.x);
+      maxScaleX[chunkIndex] = Math.max(maxScaleX[chunkIndex], scaleVec.x);
+      minScaleY[chunkIndex] = Math.min(minScaleY[chunkIndex], scaleVec.y);
+      maxScaleY[chunkIndex] = Math.max(maxScaleY[chunkIndex], scaleVec.y);
+      minScaleZ[chunkIndex] = Math.min(minScaleZ[chunkIndex], scaleVec.z);
+      maxScaleZ[chunkIndex] = Math.max(maxScaleZ[chunkIndex], scaleVec.z);
 
-      // Update min/max for color
+      // Update min/max for color (colorVec values are already in 0-255 range)
       minR[chunkIndex] = Math.min(minR[chunkIndex], colorVec.x);
       maxR[chunkIndex] = Math.max(maxR[chunkIndex], colorVec.x);
       minG[chunkIndex] = Math.min(minG[chunkIndex], colorVec.y);
@@ -237,14 +219,14 @@ export class PlayCanvasCompressedPlyEncoder {
 
       // Compress scale
       const normalizedScaleX =
-        (Math.log(scaleVec.x) - minScaleX[chunkIndex]) /
-        (maxScaleX[chunkIndex] - minScaleX[chunkIndex]);
+        (Math.log(scaleVec.x) - Math.log(minScaleX[chunkIndex])) /
+        (Math.log(maxScaleX[chunkIndex]) - Math.log(minScaleX[chunkIndex]));
       const normalizedScaleY =
-        (Math.log(scaleVec.y) - minScaleY[chunkIndex]) /
-        (maxScaleY[chunkIndex] - minScaleY[chunkIndex]);
+        (Math.log(scaleVec.y) - Math.log(minScaleY[chunkIndex])) /
+        (Math.log(maxScaleY[chunkIndex]) - Math.log(minScaleY[chunkIndex]));
       const normalizedScaleZ =
-        (Math.log(scaleVec.z) - minScaleZ[chunkIndex]) /
-        (maxScaleZ[chunkIndex] - minScaleZ[chunkIndex]);
+        (Math.log(scaleVec.z) - Math.log(minScaleZ[chunkIndex])) /
+        (Math.log(maxScaleZ[chunkIndex]) - Math.log(minScaleZ[chunkIndex]));
       scale[i] = pack111011(
         normalizedScaleX,
         normalizedScaleY,
@@ -262,36 +244,55 @@ export class PlayCanvasCompressedPlyEncoder {
 
       // Compress spherical harmonics if needed
       if (sphericalHarmonicsDegree > 0) {
-        // This part would need to be implemented based on how spherical harmonics are stored in the splat buffer
-        // For now, we'll leave it as a placeholder
+        // Get spherical harmonics data
+        const shData = new Float32Array(
+          getSphericalHarmonicsComponentCountForDegree(sphericalHarmonicsDegree)
+        );
+        splatBuffer.fillSphericalHarmonicsArray(
+          shData,
+          sphericalHarmonicsDegree,
+          null, // transform
+          i, // srcFrom
+          i, // srcTo
+          0, // destFrom
+          0 // desiredOutputCompressionLevel
+        );
+
+        // Compress each component
+        for (let j = 0; j < shData.length; j++) {
+          // Normalize to 0-255 range (assuming values are in -4 to 4 range)
+          const normalizedValue = (shData[j] + 4) / 8;
+          shArrays[j][i] = Math.floor(normalizedValue * 255);
+        }
       }
     }
 
     // Create the PLY header
     let headerText = "ply\n";
     headerText += "format binary_little_endian 1.0\n";
-    headerText += "comment Generated by PlayCanvasCompressedPlyEncoder\n";
+    headerText += "comment Generated by SuperSplat 1.15.0\n";
 
     // Add chunk element
     headerText += `element chunk ${chunkCount}\n`;
+    // Add properties in the same order as the original
     headerText += "property float min_x\n";
-    headerText += "property float max_x\n";
     headerText += "property float min_y\n";
-    headerText += "property float max_y\n";
     headerText += "property float min_z\n";
+    headerText += "property float max_x\n";
+    headerText += "property float max_y\n";
     headerText += "property float max_z\n";
     headerText += "property float min_scale_x\n";
-    headerText += "property float max_scale_x\n";
     headerText += "property float min_scale_y\n";
-    headerText += "property float max_scale_y\n";
     headerText += "property float min_scale_z\n";
+    headerText += "property float max_scale_x\n";
+    headerText += "property float max_scale_y\n";
     headerText += "property float max_scale_z\n";
-    headerText += "property uchar min_r\n";
-    headerText += "property uchar max_r\n";
-    headerText += "property uchar min_g\n";
-    headerText += "property uchar max_g\n";
-    headerText += "property uchar min_b\n";
-    headerText += "property uchar max_b\n";
+    headerText += "property float min_r\n";
+    headerText += "property float min_g\n";
+    headerText += "property float min_b\n";
+    headerText += "property float max_r\n";
+    headerText += "property float max_g\n";
+    headerText += "property float max_b\n";
 
     // Add vertex element
     headerText += `element vertex ${splatCount}\n`;
@@ -317,7 +318,7 @@ export class PlayCanvasCompressedPlyEncoder {
     const headerSize = headerText.length;
 
     // Calculate the size of the data
-    const chunkDataSize = chunkCount * (12 * 4 + 6); // 12 floats + 6 uchars per chunk
+    const chunkDataSize = chunkCount * 72; // 18 floats * 4 bytes per chunk
     const vertexDataSize = splatCount * 16; // 4 uints per vertex
     const shDataSize =
       sphericalHarmonicsDegree > 0
@@ -325,8 +326,23 @@ export class PlayCanvasCompressedPlyEncoder {
           getSphericalHarmonicsComponentCountForDegree(sphericalHarmonicsDegree)
         : 0;
 
-    // Create the output buffer
+    // Create the output buffer with exact size
     const totalSize = headerSize + chunkDataSize + vertexDataSize + shDataSize;
+    console.log(`Buffer size calculation:
+      Header size: ${headerSize}
+      Chunk data size: ${chunkDataSize} (${chunkCount} chunks * 72 bytes)
+      Vertex data size: ${vertexDataSize} (${splatCount} vertices * 16 bytes)
+      SH data size: ${shDataSize} (${
+        sphericalHarmonicsDegree > 0
+          ? splatCount *
+            getSphericalHarmonicsComponentCountForDegree(
+              sphericalHarmonicsDegree
+            )
+          : 0
+      } bytes)
+      Total size: ${totalSize}
+    `);
+
     const outputBuffer = new ArrayBuffer(totalSize);
     const dataView = new DataView(outputBuffer);
 
@@ -339,29 +355,38 @@ export class PlayCanvasCompressedPlyEncoder {
     // Write the chunk data
     let offset = headerSize;
     for (let i = 0; i < chunkCount; i++) {
+      // Write min/max values in the same order as the header
       dataView.setFloat32(offset, minX[i], true);
-      dataView.setFloat32(offset + 4, maxX[i], true);
-      dataView.setFloat32(offset + 8, minY[i], true);
-      dataView.setFloat32(offset + 12, maxY[i], true);
-      dataView.setFloat32(offset + 16, minZ[i], true);
+      dataView.setFloat32(offset + 4, minY[i], true);
+      dataView.setFloat32(offset + 8, minZ[i], true);
+      dataView.setFloat32(offset + 12, maxX[i], true);
+      dataView.setFloat32(offset + 16, maxY[i], true);
       dataView.setFloat32(offset + 20, maxZ[i], true);
       dataView.setFloat32(offset + 24, minScaleX[i], true);
-      dataView.setFloat32(offset + 28, maxScaleX[i], true);
-      dataView.setFloat32(offset + 32, minScaleY[i], true);
-      dataView.setFloat32(offset + 36, maxScaleY[i], true);
-      dataView.setFloat32(offset + 40, minScaleZ[i], true);
+      dataView.setFloat32(offset + 28, minScaleY[i], true);
+      dataView.setFloat32(offset + 32, minScaleZ[i], true);
+      dataView.setFloat32(offset + 36, maxScaleX[i], true);
+      dataView.setFloat32(offset + 40, maxScaleY[i], true);
       dataView.setFloat32(offset + 44, maxScaleZ[i], true);
-      dataView.setUint8(offset + 48, minR[i]);
-      dataView.setUint8(offset + 49, maxR[i]);
-      dataView.setUint8(offset + 50, minG[i]);
-      dataView.setUint8(offset + 51, maxG[i]);
-      dataView.setUint8(offset + 52, minB[i]);
-      dataView.setUint8(offset + 53, maxB[i]);
-      offset += 54;
+      dataView.setFloat32(offset + 48, minR[i] * 1.0, true);
+      dataView.setFloat32(offset + 52, minG[i] * 1.0, true);
+      dataView.setFloat32(offset + 56, minB[i] * 1.0, true);
+      dataView.setFloat32(offset + 60, maxR[i] * 1.0, true);
+      dataView.setFloat32(offset + 64, maxG[i] * 1.0, true);
+      dataView.setFloat32(offset + 68, maxB[i] * 1.0, true);
+      offset += 72; // 18 floats * 4 bytes
     }
 
     // Write the vertex data
     for (let i = 0; i < splatCount; i++) {
+      if (offset + 16 > totalSize) {
+        console.error(
+          `Buffer overflow: offset ${offset} + 16 > totalSize ${totalSize}`
+        );
+        throw new Error(
+          `Buffer overflow: offset ${offset} + 16 > totalSize ${totalSize}`
+        );
+      }
       dataView.setUint32(offset, position[i], true);
       dataView.setUint32(offset + 4, rotation[i], true);
       dataView.setUint32(offset + 8, scale[i], true);
@@ -373,10 +398,28 @@ export class PlayCanvasCompressedPlyEncoder {
     if (sphericalHarmonicsDegree > 0) {
       for (let i = 0; i < splatCount; i++) {
         for (let j = 0; j < shArrays.length; j++) {
+          if (offset + 1 > totalSize) {
+            console.error(
+              `Buffer overflow: offset ${offset} + 1 > totalSize ${totalSize}`
+            );
+            throw new Error(
+              `Buffer overflow: offset ${offset} + 1 > totalSize ${totalSize}`
+            );
+          }
           dataView.setUint8(offset, shArrays[j][i]);
           offset += 1;
         }
       }
+    }
+
+    // Verify we didn't write beyond the buffer
+    if (offset > totalSize) {
+      console.error(
+        `Buffer overflow: final offset ${offset} > totalSize ${totalSize}`
+      );
+      throw new Error(
+        `Buffer overflow: final offset ${offset} > totalSize ${totalSize}`
+      );
     }
 
     return outputBuffer;
