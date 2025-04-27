@@ -450,12 +450,6 @@ export class PlayCanvasCompressedPlyParser {
       unpack111011(s, scaleArray[index]);
       unpack8888(c, colorArray[index]);
 
-      // Denormalize color values back to [0,255] range
-      c.x *= 255;
-      c.y *= 255;
-      c.z *= 255;
-      c.w *= 255;
-
       outSplat[OFFSET.X] = lerp(
         positionExtremes.minX[chunkIndex],
         positionExtremes.maxX[chunkIndex],
@@ -478,57 +472,72 @@ export class PlayCanvasCompressedPlyParser {
       outSplat[OFFSET.ROTATION3] = r.w;
 
       outSplat[OFFSET.SCALE0] = Math.exp(
-        Math.log(scaleExtremes.minScaleX[chunkIndex]) +
-          s.x *
-            (Math.log(scaleExtremes.maxScaleX[chunkIndex]) -
-              Math.log(scaleExtremes.minScaleX[chunkIndex]))
+        lerp(
+          scaleExtremes.minScaleX[chunkIndex],
+          scaleExtremes.maxScaleX[chunkIndex],
+          s.x
+        )
       );
       outSplat[OFFSET.SCALE1] = Math.exp(
-        Math.log(scaleExtremes.minScaleY[chunkIndex]) +
-          s.y *
-            (Math.log(scaleExtremes.maxScaleY[chunkIndex]) -
-              Math.log(scaleExtremes.minScaleY[chunkIndex]))
+        lerp(
+          scaleExtremes.minScaleY[chunkIndex],
+          scaleExtremes.maxScaleY[chunkIndex],
+          s.y
+        )
       );
       outSplat[OFFSET.SCALE2] = Math.exp(
-        Math.log(scaleExtremes.minScaleZ[chunkIndex]) +
-          s.z *
-            (Math.log(scaleExtremes.maxScaleZ[chunkIndex]) -
-              Math.log(scaleExtremes.minScaleZ[chunkIndex]))
+        lerp(
+          scaleExtremes.minScaleZ[chunkIndex],
+          scaleExtremes.maxScaleZ[chunkIndex],
+          s.z
+        )
       );
 
-      outSplat[OFFSET.FDC0] = clamp(
-        Math.round(
-          lerp(
-            colorExtremes.minR[chunkIndex],
-            colorExtremes.maxR[chunkIndex],
-            c.x
-          )
-        ),
-        0,
-        255
-      );
-      outSplat[OFFSET.FDC1] = clamp(
-        Math.round(
-          lerp(
-            colorExtremes.minG[chunkIndex],
-            colorExtremes.maxG[chunkIndex],
-            c.y
-          )
-        ),
-        0,
-        255
-      );
-      outSplat[OFFSET.FDC2] = clamp(
-        Math.round(
-          lerp(
-            colorExtremes.minB[chunkIndex],
-            colorExtremes.maxB[chunkIndex],
-            c.z
-          )
-        ),
-        0,
-        255
-      );
+      if (colorExtremes.minR && colorExtremes.maxR) {
+        outSplat[OFFSET.FDC0] = clamp(
+          Math.round(
+            lerp(
+              colorExtremes.minR[chunkIndex],
+              colorExtremes.maxR[chunkIndex],
+              c.x
+            ) * 255
+          ),
+          0,
+          255
+        );
+      } else {
+        outSplat[OFFSET.FDC0] = clamp(Math.floor(c.x * 255), 0, 255);
+      }
+      if (colorExtremes.minG && colorExtremes.maxG) {
+        outSplat[OFFSET.FDC1] = clamp(
+          Math.round(
+            lerp(
+              colorExtremes.minG[chunkIndex],
+              colorExtremes.maxG[chunkIndex],
+              c.y
+            ) * 255
+          ),
+          0,
+          255
+        );
+      } else {
+        outSplat[OFFSET.FDC1] = clamp(Math.floor(c.y * 255), 0, 255);
+      }
+      if (colorExtremes.minB && colorExtremes.maxB) {
+        outSplat[OFFSET.FDC2] = clamp(
+          Math.round(
+            lerp(
+              colorExtremes.minB[chunkIndex],
+              colorExtremes.maxB[chunkIndex],
+              c.z
+            ) * 255
+          ),
+          0,
+          255
+        );
+      } else {
+        outSplat[OFFSET.FDC2] = clamp(Math.floor(c.z * 255), 0, 255);
+      }
       outSplat[OFFSET.OPACITY] = clamp(Math.floor(c.w * 255), 0, 255);
 
       return outSplat;
@@ -558,9 +567,8 @@ export class PlayCanvasCompressedPlyParser {
         for (let k = 0; k < 15; ++k) {
           const outIndex = shIndexMap[j * 15 + k];
           if (k < outSHCoeff && k < readSHCoeff) {
-            const value = shArray[j * readSHCoeff + k][index];
             outSplat[UncompressedSplatArray.OFFSET.FRC0 + outIndex] =
-              (value / 255) * 8 - 4;
+              shArray[j * readSHCoeff + k][index] * (8 / 255) - 4;
           }
         }
       }
@@ -818,7 +826,7 @@ export class PlayCanvasCompressedPlyParser {
     );
 
     let shArrays;
-    if (outSphericalHarmonicsDegree > 0 && shElement) {
+    if (outSphericalHarmonicsDegree > 0) {
       const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
         chunkElement,
         undefined,
@@ -849,7 +857,7 @@ export class PlayCanvasCompressedPlyParser {
         color,
         newSplat
       );
-      if (outSphericalHarmonicsDegree > 0 && shArrays) {
+      if (outSphericalHarmonicsDegree > 0) {
         PlayCanvasCompressedPlyParser.decompressSphericalHarmonics(
           i,
           shArrays,
