@@ -1,332 +1,223 @@
 import fs from "fs";
-import path from "path";
 import { PlayCanvasCompressedPlyParser } from "../src/loaders/ply/PlayCanvasCompressedPlyParser.js";
 import { PlayCanvasCompressedPlyEncoder } from "../src/loaders/ply/PlayCanvasCompressedPlyEncoder.js";
-import { PlyParserUtils } from "../src/loaders/ply/PlyParserUtils.js";
-import { PlyFormat } from "../src/loaders/ply/PlyFormat.js";
 
-// Function to convert Node.js Buffer to ArrayBuffer
 function bufferToArrayBuffer(buffer) {
-  // Create a new ArrayBuffer with the same size as the Buffer
   const arrayBuffer = new ArrayBuffer(buffer.length);
-
-  // Create a Uint8Array view of the ArrayBuffer
-  const uint8Array = new Uint8Array(arrayBuffer);
-
-  // Copy the Buffer data to the Uint8Array
+  const view = new Uint8Array(arrayBuffer);
   for (let i = 0; i < buffer.length; i++) {
-    uint8Array[i] = buffer[i];
+    view[i] = buffer[i];
   }
-
   return arrayBuffer;
 }
 
-// Function to convert ArrayBuffer to Node.js Buffer
-function arrayBufferToBuffer(arrayBuffer) {
-  return Buffer.from(arrayBuffer);
-}
-
-// Function to compare two ArrayBuffers
 function compareArrayBuffers(buffer1, buffer2) {
   if (buffer1.byteLength !== buffer2.byteLength) {
-    console.error(
+    console.log(
       `Buffer size mismatch: ${buffer1.byteLength} vs ${buffer2.byteLength}`
     );
-    console.error(
-      `Difference: ${buffer1.byteLength - buffer2.byteLength} bytes`
-    );
-
-    // Analyze the structure of both files
-    analyzePlyStructure(buffer1, "Original");
-    analyzePlyStructure(buffer2, "Encoded");
-
     return false;
   }
 
-  const view1 = new Uint8Array(buffer1);
-  const view2 = new Uint8Array(buffer2);
+  const view1 = new DataView(buffer1);
+  const view2 = new DataView(buffer2);
+  const headerSize = 1263; // PLY header size
+  const chunkDataSize = 74808; // 1039 chunks * 72 bytes
+  const vertexDataSize = 4254928; // 265933 vertices * 16 bytes
+  const shDataSize = 6382392; // SH data size
 
-  // Compare header (text part)
-  let headerEndIndex = -1;
-  for (let i = 0; i < view1.length; i++) {
-    if (
-      i + 10 < view1.length &&
-      view1[i] === 101 && // 'e'
-      view1[i + 1] === 110 && // 'n'
-      view1[i + 2] === 100 && // 'd'
-      view1[i + 3] === 95 && // '_'
-      view1[i + 4] === 104 && // 'h'
-      view1[i + 5] === 101 && // 'e'
-      view1[i + 6] === 97 && // 'a'
-      view1[i + 7] === 100 && // 'd'
-      view1[i + 8] === 101 && // 'e'
-      view1[i + 9] === 114 && // 'r'
-      view1[i + 10] === 10
-    ) {
-      // '\n'
-      headerEndIndex = i + 11;
-      break;
+  let mismatches = {
+    header: 0,
+    chunk: {
+      position: { min: 0, max: 0 },
+      scale: { min: 0, max: 0 },
+      color: { min: 0, max: 0 },
+    },
+    vertex: {
+      position: 0,
+      rotation: 0,
+      scale: 0,
+      color: 0,
+    },
+    sh: 0,
+  };
+
+  // Compare header
+  for (let i = 0; i < headerSize; i++) {
+    if (view1.getUint8(i) !== view2.getUint8(i)) {
+      mismatches.header++;
     }
   }
 
-  if (headerEndIndex === -1) {
-    console.error("Could not find end of header in the first buffer");
-    return false;
-  }
-
-  // Compare headers
-  const header1 = new TextDecoder().decode(view1.slice(0, headerEndIndex));
-  const header2 = new TextDecoder().decode(view2.slice(0, headerEndIndex));
-
-  if (header1 !== header2) {
-    console.error("Header mismatch:");
-    console.error("Original header:", header1);
-    console.error("Encoded header:", header2);
-
-    // Compare header lines
-    const headerLines1 = header1.split("\n");
-    const headerLines2 = header2.split("\n");
-
-    console.error("Header line comparison:");
-    for (
-      let i = 0;
-      i < Math.max(headerLines1.length, headerLines2.length);
-      i++
-    ) {
-      if (i >= headerLines1.length) {
-        console.error(
-          `Line ${i + 1}: Missing in original, present in encoded: "${
-            headerLines2[i]
-          }"`
-        );
-        continue;
-      }
-      if (i >= headerLines2.length) {
-        console.error(
-          `Line ${i + 1}: Present in original, missing in encoded: "${
-            headerLines1[i]
-          }"`
-        );
-        continue;
-      }
-      if (headerLines1[i] !== headerLines2[i]) {
-        console.error(`Line ${i + 1}: Different`);
-        console.error(`  Original: "${headerLines1[i]}"`);
-        console.error(`  Encoded:  "${headerLines2[i]}"`);
+  // Compare chunk data
+  for (let i = headerSize; i < headerSize + chunkDataSize; i += 72) {
+    // Position min/max (6 floats)
+    for (let j = 0; j < 6; j++) {
+      if (
+        view1.getFloat32(i + j * 4, true) !== view2.getFloat32(i + j * 4, true)
+      ) {
+        mismatches.chunk.position[j < 3 ? "min" : "max"]++;
       }
     }
-
-    return false;
-  }
-
-  // Align to 4-byte boundary for data comparison
-  const alignedOffset = Math.ceil(headerEndIndex / 4) * 4;
-
-  // Compare data with more detailed logging
-  for (let i = alignedOffset; i < view1.length; i++) {
-    if (view1[i] !== view2[i]) {
-      console.error(`Data mismatch at byte ${i}: ${view1[i]} vs ${view2[i]}`);
-      console.error(
-        `Context: ${i - alignedOffset} bytes from data section start`
-      );
-      // Log surrounding bytes for context
-      const contextStart = Math.max(alignedOffset, i - 16);
-      const contextEnd = Math.min(view1.length, i + 16);
-      console.error(
-        "Original context:",
-        Array.from(view1.slice(contextStart, contextEnd))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join(" ")
-      );
-      console.error(
-        "Encoded context:",
-        Array.from(view2.slice(contextStart, contextEnd))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join(" ")
-      );
-      return false;
+    // Scale min/max (6 floats)
+    for (let j = 6; j < 12; j++) {
+      if (
+        view1.getFloat32(i + j * 4, true) !== view2.getFloat32(i + j * 4, true)
+      ) {
+        mismatches.chunk.scale[j < 9 ? "min" : "max"]++;
+      }
+    }
+    // Color min/max (6 floats)
+    for (let j = 12; j < 18; j++) {
+      if (
+        view1.getFloat32(i + j * 4, true) !== view2.getFloat32(i + j * 4, true)
+      ) {
+        mismatches.chunk.color[j < 15 ? "min" : "max"]++;
+      }
     }
   }
 
-  return true;
+  // Compare vertex data
+  const vertexStart = headerSize + chunkDataSize;
+  for (let i = vertexStart; i < vertexStart + vertexDataSize; i += 16) {
+    // Position (1 uint)
+    if (view1.getUint32(i, true) !== view2.getUint32(i, true)) {
+      mismatches.vertex.position++;
+    }
+    // Rotation (1 uint)
+    if (view1.getUint32(i + 4, true) !== view2.getUint32(i + 4, true)) {
+      mismatches.vertex.rotation++;
+    }
+    // Scale (1 uint)
+    if (view1.getUint32(i + 8, true) !== view2.getUint32(i + 8, true)) {
+      mismatches.vertex.scale++;
+    }
+    // Color (1 uint)
+    if (view1.getUint32(i + 12, true) !== view2.getUint32(i + 12, true)) {
+      mismatches.vertex.color++;
+    }
+  }
+
+  // Compare SH data
+  const shStart = vertexStart + vertexDataSize;
+  for (let i = shStart; i < shStart + shDataSize; i++) {
+    if (view1.getUint8(i) !== view2.getUint8(i)) {
+      mismatches.sh++;
+    }
+  }
+
+  // Log detailed mismatch summary
+  console.log("\nDetailed Mismatch Analysis:");
+  console.log("==========================");
+  console.log(`Header: ${mismatches.header} mismatches`);
+
+  console.log("\nChunk Data:");
+  console.log("  Position:");
+  console.log(`    Min: ${mismatches.chunk.position.min} mismatches`);
+  console.log(`    Max: ${mismatches.chunk.position.max} mismatches`);
+  console.log("  Scale:");
+  console.log(`    Min: ${mismatches.chunk.scale.min} mismatches`);
+  console.log(`    Max: ${mismatches.chunk.scale.max} mismatches`);
+  console.log("  Color:");
+  console.log(`    Min: ${mismatches.chunk.color.min} mismatches`);
+  console.log(`    Max: ${mismatches.chunk.color.max} mismatches`);
+
+  console.log("\nVertex Data:");
+  console.log(`  Position: ${mismatches.vertex.position} mismatches`);
+  console.log(`  Rotation: ${mismatches.vertex.rotation} mismatches`);
+  console.log(`  Scale: ${mismatches.vertex.scale} mismatches`);
+  console.log(`  Color: ${mismatches.vertex.color} mismatches`);
+
+  console.log("\nSpherical Harmonics:");
+  console.log(`  Total: ${mismatches.sh} mismatches`);
+  console.log(`  Components per splat: ${mismatches.sh / 265933}`);
+
+  return mismatches;
 }
 
-// Function to analyze the structure of a PLY file
-function analyzePlyStructure(buffer, label) {
-  const view = new Uint8Array(buffer);
-
-  // Find header end
-  let headerEndIndex = -1;
-  for (let i = 0; i < view.length; i++) {
-    if (
-      i + 10 < view.length &&
-      view[i] === 101 && // 'e'
-      view[i + 1] === 110 && // 'n'
-      view[i + 2] === 100 && // 'd'
-      view[i + 3] === 95 && // '_'
-      view[i + 4] === 104 && // 'h'
-      view[i + 5] === 101 && // 'e'
-      view[i + 6] === 97 && // 'a'
-      view[i + 7] === 100 && // 'd'
-      view[i + 8] === 101 && // 'e'
-      view[i + 9] === 114 && // 'r'
-      view[i + 10] === 10
-    ) {
-      // '\n'
-      headerEndIndex = i + 11;
-      break;
-    }
-  }
-
-  if (headerEndIndex === -1) {
-    console.error(`Could not find end of header in the ${label} buffer`);
-    return;
-  }
-
-  // Parse header
-  const header = new TextDecoder().decode(view.slice(0, headerEndIndex));
-  const headerLines = header.split("\n");
-
-  console.log(`\n${label} PLY Structure Analysis:`);
-  console.log(`Header size: ${headerEndIndex} bytes`);
-  console.log(`Data size: ${buffer.byteLength - headerEndIndex} bytes`);
-  console.log("\nHeader contents:");
-  console.log(header);
-  console.log("\nHeader line by line:");
-  headerLines.forEach((line, i) => console.log(`${i + 1}: ${line}`));
-
-  // Extract element counts
-  let chunkCount = 0;
-  let vertexCount = 0;
-  let shCount = 0;
-  let currentElement = null;
-
-  for (const line of headerLines) {
-    if (line.startsWith("element ")) {
-      const parts = line.split(" ");
-      currentElement = parts[1];
-      const count = parseInt(parts[2], 10);
-
-      if (currentElement === "chunk") {
-        chunkCount = count;
-      } else if (currentElement === "vertex") {
-        vertexCount = count;
-      } else if (currentElement === "sh") {
-        shCount = count;
-      }
-    }
-  }
-
-  console.log(`Chunk count: ${chunkCount}`);
-  console.log(`Vertex count: ${vertexCount}`);
-  console.log(`Spherical harmonics count: ${shCount}`);
-
-  // Calculate expected data sizes
-  const alignedOffset = Math.ceil(headerEndIndex / 4) * 4;
-  const chunkDataSize = chunkCount * 54; // 12 floats (4 bytes each) + 6 uchars
-  const vertexDataSize = vertexCount * 16; // 4 uints (4 bytes each)
-  const shDataSize = shCount * getSphericalHarmonicsComponentCount(header);
-
-  console.log(`Expected chunk data size: ${chunkDataSize} bytes`);
-  console.log(`Expected vertex data size: ${vertexDataSize} bytes`);
-  console.log(`Expected SH data size: ${shDataSize} bytes`);
-  console.log(
-    `Total expected data size: ${
-      chunkDataSize + vertexDataSize + shDataSize
-    } bytes`
-  );
-  console.log(`Actual data size: ${buffer.byteLength - alignedOffset} bytes`);
-}
-
-// Helper function to get spherical harmonics component count from header
-function getSphericalHarmonicsComponentCount(header) {
-  const headerLines = header.split("\n");
-  let shComponentCount = 0;
-
-  for (const line of headerLines) {
-    if (line.startsWith("property uchar f_rest_")) {
-      shComponentCount++;
-    }
-  }
-
-  return shComponentCount;
-}
-
-// Main test function
 function testPlyRoundTrip(testPlyPath) {
-  console.log(`Testing PLY round trip with file: ${testPlyPath}`);
+  console.log("Testing PLY round trip...");
+  const originalBuffer = fs.readFileSync(testPlyPath);
+  const originalArrayBuffer = bufferToArrayBuffer(originalBuffer);
 
-  try {
-    // Read the test PLY file as a Buffer and convert to ArrayBuffer
-    const fileBuffer = fs.readFileSync(testPlyPath);
-
-    const originalPlyBuffer = bufferToArrayBuffer(fileBuffer);
-
-    console.log(
-      `Read original PLY file: ${originalPlyBuffer.byteLength} bytes`
+  // Parse to splat buffer with SH degree 3
+  const splatBuffer =
+    PlayCanvasCompressedPlyParser.parseToUncompressedSplatBuffer(
+      originalArrayBuffer,
+      3
     );
+  console.log("Parsed to splat buffer");
 
-    // Determine the PLY format
-    const plyFormat =
-      PlyParserUtils.determineHeaderFormatFromPlyBuffer(originalPlyBuffer);
-    console.log(`PLY format: ${plyFormat}`);
+  // Encode back to PLY
+  const encodedBuffer =
+    PlayCanvasCompressedPlyEncoder.encodeToCompressedPly(splatBuffer);
+  console.log("Encoded back to PLY");
 
-    if (plyFormat !== PlyFormat.PlayCanvasCompressed) {
-      console.error(
-        `Test file is not in PlayCanvas Compressed format. Got: ${plyFormat}`
-      );
-      return false;
-    }
+  // Compare buffers
+  const comparison = compareArrayBuffers(originalArrayBuffer, encodedBuffer);
 
-    // Parse the PLY file to a splat buffer
-    const splatBuffer =
-      PlayCanvasCompressedPlyParser.parseToUncompressedSplatBuffer(
-        originalPlyBuffer,
-        2
-      );
-    console.log(`Parsed to splat buffer with ${splatBuffer.splatCount} splats`);
+  // Write detailed summary to log.txt
+  const logStream = fs.createWriteStream("log.txt");
+  logStream.write("PLY Round Trip Test Summary\n");
+  logStream.write("==========================\n\n");
 
-    // Encode the splat buffer back to a PLY buffer
-    const encodedPlyBuffer =
-      PlayCanvasCompressedPlyEncoder.encodeToCompressedPly(splatBuffer);
-    console.log(`Encoded to PLY buffer: ${encodedPlyBuffer.byteLength} bytes`);
+  logStream.write("Buffer Size Comparison:\n");
+  logStream.write(`Original size: ${originalArrayBuffer.byteLength} bytes\n`);
+  logStream.write(`Encoded size: ${encodedBuffer.byteLength} bytes\n\n`);
 
-    // Compare the original and encoded PLY buffers
-    const isMatch = compareArrayBuffers(fileBuffer, encodedPlyBuffer);
+  logStream.write("Detailed Mismatch Analysis:\n");
+  logStream.write("==========================\n");
+  logStream.write(`Header: ${comparison.header} mismatches\n\n`);
 
-    if (isMatch) {
-      console.log("✅ Test passed: Original and encoded PLY files match");
-    } else {
-      console.error(
-        "❌ Test failed: Original and encoded PLY files do not match"
-      );
-    }
+  logStream.write("Chunk Data:\n");
+  logStream.write("  Position:\n");
+  logStream.write(`    Min: ${comparison.chunk.position.min} mismatches\n`);
+  logStream.write(`    Max: ${comparison.chunk.position.max} mismatches\n`);
+  logStream.write("  Scale:\n");
+  logStream.write(`    Min: ${comparison.chunk.scale.min} mismatches\n`);
+  logStream.write(`    Max: ${comparison.chunk.scale.max} mismatches\n`);
+  logStream.write("  Color:\n");
+  logStream.write(`    Min: ${comparison.chunk.color.min} mismatches\n`);
+  logStream.write(`    Max: ${comparison.chunk.color.max} mismatches\n\n`);
 
-    // Save the encoded PLY file for manual inspection
-    const outputPath = path.join(
-      path.dirname(testPlyPath),
-      "output_" + path.basename(testPlyPath)
-    );
-    // fs.writeFileSync(outputPath, encodedPlyBuffer);
-    fs.writeFileSync(outputPath, arrayBufferToBuffer(encodedPlyBuffer));
+  logStream.write("Vertex Data:\n");
+  logStream.write(`  Position: ${comparison.vertex.position} mismatches\n`);
+  logStream.write(`  Rotation: ${comparison.vertex.rotation} mismatches\n`);
+  logStream.write(`  Scale: ${comparison.vertex.scale} mismatches\n`);
+  logStream.write(`  Color: ${comparison.vertex.color} mismatches\n\n`);
 
-    console.log(`Saved encoded PLY file to: ${outputPath}`);
+  logStream.write("Spherical Harmonics:\n");
+  logStream.write(`  Total: ${comparison.sh} mismatches\n`);
+  logStream.write(`  Components per splat: ${comparison.sh / 265933}\n\n`);
 
-    // Save the original PLY file for comparison
-    const originalOutputPath = path.join(
-      path.dirname(testPlyPath),
-      "original_" + path.basename(testPlyPath)
-    );
-    fs.writeFileSync(originalOutputPath, fileBuffer);
-    console.log(`Saved original PLY file to: ${originalOutputPath}`);
+  logStream.write("First Chunk Values:\n");
+  logStream.write(
+    "  Position Min: " + JSON.stringify(comparison.chunk.position) + "\n"
+  );
+  logStream.write(
+    "  Position Max: " + JSON.stringify(comparison.chunk.position) + "\n"
+  );
+  logStream.write(
+    "  Scale Min: " + JSON.stringify(comparison.chunk.scale) + "\n"
+  );
+  logStream.write(
+    "  Scale Max: " + JSON.stringify(comparison.chunk.scale) + "\n"
+  );
+  logStream.write(
+    "  Color Min: " + JSON.stringify(comparison.chunk.color) + "\n"
+  );
+  logStream.write(
+    "  Color Max: " + JSON.stringify(comparison.chunk.color) + "\n"
+  );
 
-    return isMatch;
-  } catch (error) {
-    console.error("Error during test:", error);
-    return false;
-  }
+  logStream.end();
 }
 
-// Run the test with the provided test.ply file
-const testPlyPath = "./test.ply";
+// Run the test
+const testPlyPath = process.argv[2];
+if (!testPlyPath) {
+  console.error("Please provide a PLY file path as an argument");
+  process.exit(1);
+}
+
 testPlyRoundTrip(testPlyPath);
