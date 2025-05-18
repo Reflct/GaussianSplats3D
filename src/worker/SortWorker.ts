@@ -6,7 +6,7 @@ import SorterWasmNoSIMD from "./sorter_no_simd.wasm";
 import SorterWasmNonShared from "./sorter_non_shared.wasm";
 // @ts-ignore
 import SorterWasmNoSIMDNonShared from "./sorter_no_simd_non_shared.wasm";
-import { isIOS, getIOSSemever } from "../Util.js";
+import { isIOS, getIOSSemever } from "../Util";
 import { Constants } from "../Constants";
 
 // Interface for the Constants passed to the worker

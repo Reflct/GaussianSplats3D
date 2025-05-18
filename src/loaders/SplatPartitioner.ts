@@ -5,7 +5,7 @@ import { SplatBuffer } from "./SplatBuffer";
 interface GroupingParameter {
   blocksSize: number;
   bucketSize: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface PartitionGeneratorResult {

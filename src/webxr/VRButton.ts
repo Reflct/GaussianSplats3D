@@ -12,18 +12,16 @@ The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
 */
 
-// @ts-ignore
 import * as THREE from "three";
 
 // Define a simple WebXR session init interface
 interface XRSessionInit {
   requiredFeatures?: string[];
   optionalFeatures?: string[];
-  [key: string]: any;
 }
 
-// Create a simple XRSession interface that only defines the methods we use
-interface BasicXRSession extends EventTarget {
+// Create a more complete XRSession interface
+interface XRSession extends EventTarget {
   end(): Promise<void>;
   addEventListener(
     type: string,
@@ -39,9 +37,8 @@ interface BasicXRSession extends EventTarget {
 
 // Define WebGLRendererXR interface for the renderer.xr property
 interface WebGLRendererXR {
-  setSession(session: BasicXRSession): Promise<void>;
+  setSession(session: XRSession): Promise<void>;
   enabled?: boolean;
-  [key: string]: any;
 }
 
 export class VRButton {
@@ -63,12 +60,11 @@ export class VRButton {
     const button = document.createElement("button");
 
     function showEnterVR(/* device */): void {
-      let currentSession: any = null;
+      let currentSession: XRSession | null = null;
 
-      async function onSessionStarted(session: any): Promise<void> {
+      async function onSessionStarted(session: XRSession): Promise<void> {
         session.addEventListener("end", onSessionEnded);
 
-        // @ts-ignore - WebGLRenderer.xr.setSession is not properly typed, but it exists
         await renderer.xr.setSession(session);
         button.textContent = "EXIT VR";
 
@@ -122,18 +118,31 @@ export class VRButton {
 
       button.onclick = function (): void {
         if (currentSession === null && navigator.xr) {
-          navigator.xr
+          // Use type assertion to access navigator.xr
+          (
+            navigator.xr as {
+              requestSession(
+                mode: string,
+                options?: XRSessionInit
+              ): Promise<XRSession>;
+            }
+          )
             .requestSession("immersive-vr", sessionOptions)
             .then(onSessionStarted);
         } else if (currentSession) {
           currentSession.end();
 
           // Check if offerSession exists as a function
-          const xr = navigator.xr as any;
-          if (xr && typeof xr.offerSession === "function") {
+          const xr = navigator.xr as {
+            offerSession?: (
+              mode: string,
+              options?: XRSessionInit
+            ) => Promise<XRSession>;
+          };
+          if (xr.offerSession) {
             xr.offerSession("immersive-vr", sessionOptions)
               .then(onSessionStarted)
-              .catch((err: any) => {
+              .catch((err: Error) => {
                 console.warn(err);
               });
           }
@@ -141,11 +150,16 @@ export class VRButton {
       };
 
       // Check if offerSession exists as a function
-      const xr = navigator.xr as any;
-      if (xr && typeof xr.offerSession === "function") {
+      const xr = navigator.xr as {
+        offerSession?: (
+          mode: string,
+          options?: XRSessionInit
+        ) => Promise<XRSession>;
+      };
+      if (xr.offerSession) {
         xr.offerSession("immersive-vr", sessionOptions)
           .then(onSessionStarted)
-          .catch((err: any) => {
+          .catch((err: Error) => {
             console.warn(err);
           });
       }
@@ -200,8 +214,8 @@ export class VRButton {
       stylizeElement(button);
 
       if (navigator.xr) {
-        // @ts-ignore - Navigator.xr methods are not properly typed
-        navigator.xr
+        // Use inline type assertion
+        (navigator.xr as { isSessionSupported(mode: string): Promise<boolean> })
           .isSessionSupported("immersive-vr")
           .then(function (supported: boolean) {
             supported ? showEnterVR() : showWebXRNotFound();
@@ -244,8 +258,16 @@ export class VRButton {
       // throws a silent exception and aborts execution entirely.
       if (/WebXRViewer\//i.test(navigator.userAgent)) return;
 
-      // @ts-ignore - Navigator.xr methods are not properly typed
-      navigator.xr.addEventListener("sessiongranted", () => {
+      // Use inline type assertion
+      (
+        navigator.xr as {
+          addEventListener(
+            type: string,
+            listener: EventListenerOrEventListenerObject,
+            options?: boolean | AddEventListenerOptions
+          ): void;
+        }
+      ).addEventListener("sessiongranted", () => {
         VRButton.xrSessionIsGranted = true;
       });
     }

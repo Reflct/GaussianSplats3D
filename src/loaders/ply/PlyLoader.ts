@@ -1,22 +1,117 @@
 import * as THREE from "three";
-import { PlyParser } from "./PlyParser.js";
-import { PlyParserUtils } from "./PlyParserUtils.js";
-import { INRIAV1PlyParser } from "./INRIAV1PlyParser.js";
-import { PlayCanvasCompressedPlyParser } from "./PlayCanvasCompressedPlyParser.js";
-import { PlyFormat } from "./PlyFormat.js";
+import { PlyParser } from "./PlyParser";
+import { PlyParserUtils } from "./PlyParserUtils";
+import { INRIAV1PlyParser } from "./INRIAV1PlyParser";
+import { PlayCanvasCompressedPlyParser } from "./PlayCanvasCompressedPlyParser";
+import { PlyFormat } from "./PlyFormat";
 import {
   fetchWithProgress,
   delayedExecute,
   nativePromiseWithExtractedComponents,
-} from "../../Util.js";
-import { SplatBuffer, SplatBufferSection } from "../SplatBuffer.js";
-import { SplatBufferGenerator } from "../SplatBufferGenerator.js";
-import { LoaderStatus } from "../LoaderStatus.js";
-import { DirectLoadError } from "../DirectLoadError.js";
-import { Constants } from "../../Constants.js";
-import { UncompressedSplatArray } from "../UncompressedSplatArray.js";
-import { InternalLoadType } from "../InternalLoadType.js";
-import { AbortablePromise } from "../../AbortablePromise.js";
+} from "../../Util";
+import { SplatBuffer, SplatBufferSection } from "../SplatBuffer";
+import { SplatBufferGenerator } from "../SplatBufferGenerator";
+import { LoaderStatus } from "../LoaderStatus";
+import { DirectLoadError } from "../DirectLoadError";
+import { Constants } from "../../Constants";
+import { UncompressedSplatArray } from "../UncompressedSplatArray";
+import { InternalLoadType } from "../InternalLoadType";
+import { AbortablePromise } from "../../AbortablePromise";
+
+/**
+ * Interface for INRIA V1 PLY header
+ */
+interface INRIAV1Header {
+  headerLines: string[];
+  headerStartLine: number;
+  headerEndLine: number;
+  fieldTypes: number[];
+  fieldIds: number[];
+  fieldOffsets: number[];
+  bytesPerVertex: number;
+  vertexCount: number;
+  dataSizeBytes: number;
+  endOfHeader: boolean;
+  sectionName: string | null;
+  sphericalHarmonicsDegree: number;
+  sphericalHarmonicsCoefficientsPerChannel: number;
+  sphericalHarmonicsDegree1Fields: number[];
+  sphericalHarmonicsDegree2Fields: number[];
+  splatCount: number;
+  bytesPerSplat: number;
+  fieldsToReadIndexes: number[];
+  headerText?: string;
+  headerSizeBytes: number;
+}
+
+/**
+ * Define a union type for all possible TypedArrays or undefined or null
+ */
+export type TypedArray =
+  | Int8Array
+  | Uint8Array
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array
+  | undefined
+  | null;
+
+/**
+ * Refined TypedArray type that excludes undefined and null for use in function parameters
+ */
+export type NonNullableTypedArray =
+  | Int8Array
+  | Uint8Array
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Float32Array
+  | Float64Array;
+
+/**
+
+/**
+ * Interface for PLY property
+ */
+export interface PlyProperty {
+  type: string;
+  name: string;
+  storage: TypedArray;
+  byteSize: number;
+  storageSizeByes: number;
+}
+
+/**
+ * Interface for PLY element
+ */
+export interface PlyElement {
+  name: string;
+  count: number;
+  properties: PlyProperty[];
+  storageSizeBytes: number;
+}
+
+/**
+ * Interface for PlayCanvas compressed PLY header
+ */
+export interface PlayCanvasHeader {
+  headerSizeBytes: number;
+  bytesPerSplat: number;
+  chunkElement?: PlyElement;
+  vertexElement?: PlyElement;
+  shElement?: PlyElement;
+  sphericalHarmonicsDegree: number;
+  sphericalHarmonicsPerSplat: number;
+}
+
+/**
+ * Type for PLY header in different formats
+ */
+type PlyHeader = INRIAV1Header | PlayCanvasHeader;
 
 /**
  * Interface for a data chunk
@@ -131,6 +226,22 @@ function finalize(
 }
 
 /**
+ * Type guard to check if the header is an INRIAV1Header
+ */
+function isINRIAV1Header(header: PlyHeader | null): header is INRIAV1Header {
+  return header !== null && "vertexCount" in header;
+}
+
+/**
+ * Type guard to check if the header is a PlayCanvasHeader
+ */
+function isPlayCanvasHeader(
+  header: PlyHeader | null
+): header is PlayCanvasHeader {
+  return header !== null && "vertexElement" in header;
+}
+
+/**
  * PlyLoader class for loading and processing PLY files
  */
 export class PlyLoader {
@@ -209,7 +320,7 @@ export class PlyLoader {
     let numBytesDownloaded = 0;
     let endOfBaseSplatDataBytes = 0;
     let headerText = "";
-    let header: any = null;
+    let header: PlyHeader | null = null;
     let chunks: DataChunk[] = [];
 
     let standardLoadUncompressedSplatArray: UncompressedSplatArray;
@@ -244,21 +355,28 @@ export class PlyLoader {
             plyFormat =
               PlyParserUtils.determineHeaderFormatFromHeaderText(headerText);
             if (plyFormat === PlyFormat.INRIAV1) {
-              header = INRIAV1PlyParser.decodeHeaderText(headerText);
+              const inriaHeader = INRIAV1PlyParser.decodeHeaderText(
+                headerText
+              ) as INRIAV1Header;
+              header = inriaHeader;
               outSphericalHarmonicsDegree = Math.min(
                 outSphericalHarmonicsDegree,
-                header.sphericalHarmonicsDegree
+                inriaHeader.sphericalHarmonicsDegree
               );
-              maxSplatCount = header.splatCount;
+              maxSplatCount = inriaHeader.splatCount;
               readyToLoadSplatData = true;
               endOfBaseSplatDataBytes =
-                header.headerSizeBytes + header.bytesPerSplat * maxSplatCount;
+                inriaHeader.headerSizeBytes +
+                inriaHeader.bytesPerSplat * maxSplatCount;
             } else if (plyFormat === PlyFormat.PlayCanvasCompressed) {
-              header =
-                PlayCanvasCompressedPlyParser.decodeHeaderText(headerText);
+              const playCanvasHeader =
+                PlayCanvasCompressedPlyParser.decodeHeaderText(
+                  headerText
+                ) as PlayCanvasHeader;
+              header = playCanvasHeader;
               outSphericalHarmonicsDegree = Math.min(
                 outSphericalHarmonicsDegree,
-                header.sphericalHarmonicsDegree
+                playCanvasHeader.sphericalHarmonicsDegree
               );
               if (
                 internalLoadType ===
@@ -270,11 +388,11 @@ export class PlyLoader {
                     "harmonics data that cannot be progressively loaded."
                 );
               }
-              maxSplatCount = header.vertexElement.count;
+              maxSplatCount = playCanvasHeader.vertexElement?.count ?? 0;
               endOfBaseSplatDataBytes =
-                header.headerSizeBytes +
-                header.bytesPerSplat * maxSplatCount +
-                header.chunkElement.storageSizeBytes;
+                playCanvasHeader.headerSizeBytes +
+                playCanvasHeader.bytesPerSplat * maxSplatCount +
+                (playCanvasHeader.chunkElement?.storageSizeBytes ?? 0);
             } else {
               if (
                 internalLoadType === InternalLoadType.ProgressiveToSplatBuffer
@@ -318,16 +436,21 @@ export class PlyLoader {
               );
             }
 
-            numBytesStreamed = header.headerSizeBytes;
-            numBytesParsed = header.headerSizeBytes;
+            if (header) {
+              numBytesStreamed = header.headerSizeBytes;
+              numBytesParsed = header.headerSizeBytes;
+            }
             headerLoaded = true;
           }
         } else if (
           plyFormat === PlyFormat.PlayCanvasCompressed &&
-          !readyToLoadSplatData
+          !readyToLoadSplatData &&
+          header !== null &&
+          isPlayCanvasHeader(header)
         ) {
           const sizeRequiredForHeaderAndChunks =
-            header.headerSizeBytes + header.chunkElement.storageSizeBytes;
+            header.headerSizeBytes +
+            (header.chunkElement?.storageSizeBytes ?? 0);
           compressedPlyHeaderChunksBuffer = storeChunksInBuffer(
             chunks,
             compressedPlyHeaderChunksBuffer
@@ -347,7 +470,12 @@ export class PlyLoader {
           }
         }
 
-        if (headerLoaded && readyToLoadSplatData && chunks.length > 0) {
+        if (
+          headerLoaded &&
+          readyToLoadSplatData &&
+          chunks.length > 0 &&
+          header !== null
+        ) {
           directLoadBufferIn = storeChunksInBuffer(chunks, directLoadBufferIn);
 
           const bytesLoadedSinceLastStreamedSection =
@@ -359,7 +487,9 @@ export class PlyLoader {
             loadComplete
           ) {
             const bytesPerSplat = baseSplatDataLoaded
-              ? header.sphericalHarmonicsPerSplat
+              ? isPlayCanvasHeader(header)
+                ? header.sphericalHarmonicsPerSplat
+                : 0
               : header.bytesPerSplat;
             const endOfBytesToProcess = baseSplatDataLoaded
               ? numBytesDownloaded
@@ -389,7 +519,10 @@ export class PlyLoader {
                 const outOffset =
                   processedBaseSplatCount * shDesc.BytesPerSplat +
                   splatBufferDataOffsetBytes;
-                if (plyFormat === PlyFormat.PlayCanvasCompressed) {
+                if (
+                  plyFormat === PlyFormat.PlayCanvasCompressed &&
+                  isPlayCanvasHeader(header)
+                ) {
                   PlayCanvasCompressedPlyParser.parseToUncompressedSplatBufferSection(
                     header.chunkElement,
                     header.vertexElement,
@@ -400,7 +533,7 @@ export class PlyLoader {
                     directLoadBufferOut,
                     outOffset
                   );
-                } else {
+                } else if (isINRIAV1Header(header)) {
                   INRIAV1PlyParser.parseToUncompressedSplatBufferSection(
                     header,
                     0,
@@ -413,7 +546,10 @@ export class PlyLoader {
                   );
                 }
               } else {
-                if (plyFormat === PlyFormat.PlayCanvasCompressed) {
+                if (
+                  plyFormat === PlyFormat.PlayCanvasCompressed &&
+                  isPlayCanvasHeader(header)
+                ) {
                   PlayCanvasCompressedPlyParser.parseToUncompressedSplatArraySection(
                     header.chunkElement,
                     header.vertexElement,
@@ -423,7 +559,7 @@ export class PlyLoader {
                     dataToParse,
                     standardLoadUncompressedSplatArray
                   );
-                } else {
+                } else if (isINRIAV1Header(header)) {
                   INRIAV1PlyParser.parseToUncompressedSplatArraySection(
                     header,
                     0,
@@ -485,9 +621,14 @@ export class PlyLoader {
                 baseSplatDataLoaded = true;
               }
             } else {
-              if (plyFormat === PlyFormat.PlayCanvasCompressed) {
+              if (
+                plyFormat === PlyFormat.PlayCanvasCompressed &&
+                isPlayCanvasHeader(header)
+              ) {
                 if (
-                  internalLoadType === InternalLoadType.ProgressiveToSplatArray
+                  internalLoadType ===
+                    InternalLoadType.ProgressiveToSplatArray &&
+                  header.shElement
                 ) {
                   PlayCanvasCompressedPlyParser.parseSphericalHarmonicsToUncompressedSplatArraySection(
                     header.chunkElement,

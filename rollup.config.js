@@ -1,4 +1,4 @@
-import { base64 } from "./util/import-base-64.js";
+import { base64 } from "./util/import-base-64.ts";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 
@@ -8,7 +8,7 @@ const globals = {
 
 export default [
   {
-    input: "./src/index.js",
+    input: "./src/index.ts",
     treeshake: false,
     external: ["three"],
     output: [
@@ -41,7 +41,7 @@ export default [
     ],
   },
   {
-    input: "./src/index.js",
+    input: "./src/index.ts",
     treeshake: false,
     external: ["three"],
     output: [

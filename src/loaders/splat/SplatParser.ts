@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { SplatBuffer } from "../SplatBuffer.js";
-import { UncompressedSplatArray } from "../UncompressedSplatArray.js";
+import { SplatBuffer } from "../SplatBuffer";
+import { UncompressedSplatArray } from "../UncompressedSplatArray";
 
 /**
  * Parser for Splat file format

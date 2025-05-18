@@ -2,6 +2,12 @@ import { UncompressedSplatArray } from "../UncompressedSplatArray";
 import { SplatBuffer } from "../SplatBuffer";
 import { clamp } from "../../Util";
 import * as THREE from "three";
+import {
+  NonNullableTypedArray,
+  PlayCanvasHeader,
+  PlyElement,
+  TypedArray,
+} from "./PlyLoader";
 
 const HeaderMagicBytes = new Uint8Array([112, 108, 121, 10]);
 const HeaderEndTokenBytes = new Uint8Array([
@@ -90,19 +96,6 @@ const lerp = (a: number, b: number, t: number): number => {
   return a * (1 - t) + b * t;
 };
 
-// Define a union type for all possible TypedArrays or undefined or null
-type TypedArray =
-  | Int8Array
-  | Uint8Array
-  | Int16Array
-  | Uint16Array
-  | Int32Array
-  | Uint32Array
-  | Float32Array
-  | Float64Array
-  | undefined
-  | null;
-
 /**
  * Gets the storage array for a property of an element
  */
@@ -112,40 +105,6 @@ const getElementPropStorage = (
 ): TypedArray => {
   return element.properties.find((p) => p.name === name && p.storage)?.storage;
 };
-
-/**
- * Interface for PLY property
- */
-interface PlyProperty {
-  type: string;
-  name: string;
-  storage: TypedArray;
-  byteSize: number;
-  storageSizeByes: number;
-}
-
-/**
- * Interface for PLY element
- */
-interface PlyElement {
-  name: string;
-  count: number;
-  properties: PlyProperty[];
-  storageSizeBytes: number;
-}
-
-/**
- * Interface for PLY header
- */
-interface PlyHeader {
-  headerSizeBytes: number;
-  bytesPerSplat: number;
-  chunkElement?: PlyElement;
-  vertexElement?: PlyElement;
-  shElement?: PlyElement;
-  sphericalHarmonicsDegree: number;
-  sphericalHarmonicsPerSplat: number;
-}
 
 /**
  * Interface for element storage arrays
@@ -185,13 +144,49 @@ interface ElementStorageArrays {
 }
 
 /**
+ * Interface for position extremes
+ */
+interface PositionExtremes {
+  minX: TypedArray;
+  maxX: TypedArray;
+  minY: TypedArray;
+  maxY: TypedArray;
+  minZ: TypedArray;
+  maxZ: TypedArray;
+}
+
+/**
+ * Interface for scale extremes
+ */
+interface ScaleExtremes {
+  minScaleX: TypedArray;
+  maxScaleX: TypedArray;
+  minScaleY: TypedArray;
+  maxScaleY: TypedArray;
+  minScaleZ: TypedArray;
+  maxScaleZ: TypedArray;
+}
+
+/**
+ * Interface for color extremes
+ */
+interface ColorExtremes {
+  minR: TypedArray;
+  maxR: TypedArray;
+  minG: TypedArray;
+  maxG: TypedArray;
+  minB: TypedArray;
+  maxB: TypedArray;
+}
+
+/**
  * Parser for the PlayCanvas compressed PLY format
  */
 export class PlayCanvasCompressedPlyParser {
   /**
    * Decode the header text of a PLY file
    */
-  static decodeHeaderText(headerText: string): PlyHeader {
+  static decodeHeaderText(headerText: string): PlayCanvasHeader {
     let element: PlyElement | undefined;
     let chunkElement: PlyElement | undefined;
     let vertexElement: PlyElement | undefined;
@@ -285,7 +280,7 @@ export class PlayCanvasCompressedPlyParser {
   /**
    * Decode the header of a PLY buffer
    */
-  static decodeHeader(plyBuffer: ArrayBuffer): PlyHeader {
+  static decodeHeader(plyBuffer: ArrayBuffer): PlayCanvasHeader {
     /**
      * Searches for the first occurrence of a sequence within a buffer.
      * @example
@@ -556,7 +551,7 @@ export class PlayCanvasCompressedPlyParser {
     }
 
     if (shElement) {
-      const shStorageArrays: { [key: string]: any } = {};
+      const shStorageArrays: { [key: string]: NonNullableTypedArray } = {};
       for (let i = 0; i < 45; i++) {
         const fRestKey = `f_rest_${i}`;
         const fRest = getElementPropStorage(shElement, fRestKey);
@@ -586,37 +581,21 @@ export class PlayCanvasCompressedPlyParser {
     return function (
       index: number,
       chunkSplatIndexOffset: number,
-      positionArray: any,
-      positionExtremes: {
-        minX: any;
-        maxX: any;
-        minY: any;
-        maxY: any;
-        minZ: any;
-        maxZ: any;
-      },
-      scaleArray: any,
-      scaleExtremes: {
-        minScaleX: any;
-        maxScaleX: any;
-        minScaleY: any;
-        maxScaleY: any;
-        minScaleZ: any;
-        maxScaleZ: any;
-      },
-      rotationArray: any,
-      colorExtremes: {
-        minR: any;
-        maxR: any;
-        minG: any;
-        maxG: any;
-        minB: any;
-        maxB: any;
-      },
-      colorArray: any,
+      positionArray: TypedArray,
+      positionExtremes: PositionExtremes,
+      scaleArray: TypedArray,
+      scaleExtremes: ScaleExtremes,
+      rotationArray: TypedArray,
+      colorExtremes: ColorExtremes,
+      colorArray: TypedArray,
       outSplat: number[]
     ): number[] {
       outSplat = outSplat || UncompressedSplatArray.createSplat();
+
+      // Ensure arrays are not null/undefined
+      if (!positionArray || !rotationArray || !scaleArray || !colorArray) {
+        return outSplat;
+      }
 
       const chunkIndex = Math.floor((chunkSplatIndexOffset + index) / 256);
 
@@ -625,50 +604,79 @@ export class PlayCanvasCompressedPlyParser {
       unpack111011(s, scaleArray[index]);
       unpack8888(c, colorArray[index]);
 
-      outSplat[OFFSET.X] = lerp(
-        positionExtremes.minX[chunkIndex],
-        positionExtremes.maxX[chunkIndex],
-        p.x
-      );
-      outSplat[OFFSET.Y] = lerp(
-        positionExtremes.minY[chunkIndex],
-        positionExtremes.maxY[chunkIndex],
-        p.y
-      );
-      outSplat[OFFSET.Z] = lerp(
-        positionExtremes.minZ[chunkIndex],
-        positionExtremes.maxZ[chunkIndex],
-        p.z
-      );
+      // Handle potentially null/undefined extremes
+      if (positionExtremes?.minX && positionExtremes?.maxX) {
+        outSplat[OFFSET.X] = lerp(
+          positionExtremes.minX[chunkIndex],
+          positionExtremes.maxX[chunkIndex],
+          p.x
+        );
+      } else {
+        outSplat[OFFSET.X] = p.x;
+      }
+
+      if (positionExtremes?.minY && positionExtremes?.maxY) {
+        outSplat[OFFSET.Y] = lerp(
+          positionExtremes.minY[chunkIndex],
+          positionExtremes.maxY[chunkIndex],
+          p.y
+        );
+      } else {
+        outSplat[OFFSET.Y] = p.y;
+      }
+
+      if (positionExtremes?.minZ && positionExtremes?.maxZ) {
+        outSplat[OFFSET.Z] = lerp(
+          positionExtremes.minZ[chunkIndex],
+          positionExtremes.maxZ[chunkIndex],
+          p.z
+        );
+      } else {
+        outSplat[OFFSET.Z] = p.z;
+      }
 
       outSplat[OFFSET.ROTATION0] = r.x;
       outSplat[OFFSET.ROTATION1] = r.y;
       outSplat[OFFSET.ROTATION2] = r.z;
       outSplat[OFFSET.ROTATION3] = r.w;
 
-      outSplat[OFFSET.SCALE0] = Math.exp(
-        lerp(
-          scaleExtremes.minScaleX[chunkIndex],
-          scaleExtremes.maxScaleX[chunkIndex],
-          s.x
-        )
-      );
-      outSplat[OFFSET.SCALE1] = Math.exp(
-        lerp(
-          scaleExtremes.minScaleY[chunkIndex],
-          scaleExtremes.maxScaleY[chunkIndex],
-          s.y
-        )
-      );
-      outSplat[OFFSET.SCALE2] = Math.exp(
-        lerp(
-          scaleExtremes.minScaleZ[chunkIndex],
-          scaleExtremes.maxScaleZ[chunkIndex],
-          s.z
-        )
-      );
+      if (scaleExtremes?.minScaleX && scaleExtremes?.maxScaleX) {
+        outSplat[OFFSET.SCALE0] = Math.exp(
+          lerp(
+            scaleExtremes.minScaleX[chunkIndex],
+            scaleExtremes.maxScaleX[chunkIndex],
+            s.x
+          )
+        );
+      } else {
+        outSplat[OFFSET.SCALE0] = Math.exp(s.x);
+      }
 
-      if (colorExtremes.minR && colorExtremes.maxR) {
+      if (scaleExtremes?.minScaleY && scaleExtremes?.maxScaleY) {
+        outSplat[OFFSET.SCALE1] = Math.exp(
+          lerp(
+            scaleExtremes.minScaleY[chunkIndex],
+            scaleExtremes.maxScaleY[chunkIndex],
+            s.y
+          )
+        );
+      } else {
+        outSplat[OFFSET.SCALE1] = Math.exp(s.y);
+      }
+
+      if (scaleExtremes?.minScaleZ && scaleExtremes?.maxScaleZ) {
+        outSplat[OFFSET.SCALE2] = Math.exp(
+          lerp(
+            scaleExtremes.minScaleZ[chunkIndex],
+            scaleExtremes.maxScaleZ[chunkIndex],
+            s.z
+          )
+        );
+      } else {
+        outSplat[OFFSET.SCALE2] = Math.exp(s.z);
+      }
+
+      if (colorExtremes?.minR && colorExtremes?.maxR) {
         outSplat[OFFSET.FDC0] = clamp(
           Math.round(
             lerp(
@@ -683,7 +691,8 @@ export class PlayCanvasCompressedPlyParser {
       } else {
         outSplat[OFFSET.FDC0] = clamp(Math.floor(c.x * 255), 0, 255);
       }
-      if (colorExtremes.minG && colorExtremes.maxG) {
+
+      if (colorExtremes?.minG && colorExtremes?.maxG) {
         outSplat[OFFSET.FDC1] = clamp(
           Math.round(
             lerp(
@@ -698,7 +707,8 @@ export class PlayCanvasCompressedPlyParser {
       } else {
         outSplat[OFFSET.FDC1] = clamp(Math.floor(c.y * 255), 0, 255);
       }
-      if (colorExtremes.minB && colorExtremes.maxB) {
+
+      if (colorExtremes?.minB && colorExtremes?.maxB) {
         outSplat[OFFSET.FDC2] = clamp(
           Math.round(
             lerp(
@@ -713,6 +723,7 @@ export class PlayCanvasCompressedPlyParser {
       } else {
         outSplat[OFFSET.FDC2] = clamp(Math.floor(c.z * 255), 0, 255);
       }
+
       outSplat[OFFSET.OPACITY] = clamp(Math.floor(c.w * 255), 0, 255);
 
       return outSplat;
@@ -753,7 +764,6 @@ export class PlayCanvasCompressedPlyParser {
           }
         }
       }
-
       return outSplat;
     };
   })();
@@ -905,21 +915,32 @@ export class PlayCanvasCompressedPlyParser {
       propertyFilter
     );
 
-    const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
-      chunkElement,
-      undefined,
-      shElement
-    );
-    const shArrays = Object.values(sh || {});
-
-    for (let i = fromIndex; i <= toIndex; ++i) {
-      PlayCanvasCompressedPlyParser.decompressSphericalHarmonics(
-        i,
-        shArrays,
-        outSphericalHarmonicsDegree,
-        readSphericalHarmonicsDegree,
-        splatArray.splats[i]
+    if (outSphericalHarmonicsDegree > 0 && shElement) {
+      const { sh } = PlayCanvasCompressedPlyParser.getElementStorageArrays(
+        chunkElement,
+        undefined,
+        shElement
       );
+
+      // Use a loop instead of Object.values to build the array with type safety
+      let shArrays: TypedArray[] = [];
+      if (sh) {
+        for (const key in sh) {
+          if (sh[key] !== undefined && sh[key] !== null) {
+            shArrays.push(sh[key]);
+          }
+        }
+      }
+
+      for (let i = fromIndex; i <= toIndex; ++i) {
+        PlayCanvasCompressedPlyParser.decompressSphericalHarmonics(
+          i,
+          shArrays,
+          outSphericalHarmonicsDegree,
+          readSphericalHarmonicsDegree,
+          splatArray.splats[i]
+        );
+      }
     }
   }
 
@@ -962,7 +983,16 @@ export class PlayCanvasCompressedPlyParser {
         undefined,
         shElement
       );
-      shArrays = Object.values(sh || {});
+
+      // Use a loop instead of Object.values to build the array with type safety
+      shArrays = [];
+      if (sh) {
+        for (const key in sh) {
+          if (sh[key] !== undefined && sh[key] !== null) {
+            shArrays.push(sh[key]);
+          }
+        }
+      }
     }
 
     if (!positionExtremes || !scaleExtremes || !colorExtremes) {
@@ -1045,7 +1075,16 @@ export class PlayCanvasCompressedPlyParser {
         undefined,
         shElement
       );
-      shArrays = Object.values(sh || {});
+
+      // Use a loop instead of Object.values to build the array with type safety
+      shArrays = [];
+      if (sh) {
+        for (const key in sh) {
+          if (sh[key] !== undefined && sh[key] !== null) {
+            shArrays.push(sh[key]);
+          }
+        }
+      }
     }
 
     const outBytesPerSplat =

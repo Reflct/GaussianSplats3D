@@ -1,22 +1,21 @@
 import * as THREE from "three";
-import { SplatMaterial3D } from "./SplatMaterial3D";
-import { SplatMaterial2D } from "./SplatMaterial2D";
-import { SplatGeometry } from "./SplatGeometry";
-import { SplatScene } from "./SplatScene";
-import { SplatTree } from "../splattree/SplatTree";
-import { WebGLExtensions } from "../three-shim/WebGLExtensions";
-import { WebGLCapabilities } from "../three-shim/WebGLCapabilities";
-import { uintEncodedFloat, rgbaArrayToInteger } from "../Util";
 import { Constants } from "../Constants";
+import { SplatBuffer } from "../loaders/SplatBuffer";
+import { LogLevel } from "../LogLevel";
 import { SceneRevealMode } from "../SceneRevealMode";
 import { SplatRenderMode } from "../SplatRenderMode";
-import { LogLevel } from "../LogLevel";
+import { SplatTree } from "../splattree/SplatTree";
+import { WebGLCapabilities } from "../three-shim/WebGLCapabilities";
+import { WebGLExtensions } from "../three-shim/WebGLExtensions";
 import { clamp, getSphericalHarmonicsComponentCountForDegree } from "../Util";
-import { SplatBuffer } from "../loaders/SplatBuffer";
+import { SplatGeometry } from "./SplatGeometry";
+import { SplatMaterial2D } from "./SplatMaterial2D";
+import { SplatMaterial3D } from "./SplatMaterial3D";
+import { SplatScene } from "./SplatScene";
 
 // Define interfaces for type safety
 interface TextureContainer {
-  data?: any; // Make data optional to allow delete operation
+  data?: Float32Array | Uint8Array | Uint16Array | Uint32Array; // Use specific types instead of any
   texture?: THREE.DataTexture;
   size?: THREE.Vector2;
   compressionLevel?: number;
@@ -31,12 +30,12 @@ interface TextureContainer {
 }
 
 interface SplatBaseData {
-  covariances?: any; // Make properties optional to allow delete operation
-  scales?: any;
-  rotations?: any;
-  centers?: any;
-  colors?: any;
-  sphericalHarmonics?: any;
+  covariances?: Float32Array; // Use specific types instead of any
+  scales?: Float32Array;
+  rotations?: Float32Array;
+  centers?: Float32Array;
+  colors?: Uint8Array;
+  sphericalHarmonics?: Float32Array;
 }
 
 interface SplatDataTextures {
@@ -115,6 +114,48 @@ type SplatTreeNode = {
   children?: SplatTreeNode[];
 };
 
+// Add interface for WebGL utilities
+interface WebGLUtils {
+  convert: (format: number, colorSpace?: string) => number;
+}
+
+// Add type for the THREE.WebGLUtils constructor
+interface WebGLUtilsConstructor {
+  new (gl: WebGLRenderingContext, extensions: WebGLExtensions): WebGLUtils;
+}
+
+// Add interface for WebGL extensions
+interface WebGLExtensions {
+  init: (capabilities: WebGLCapabilities) => void;
+  get: (name: string) => any;
+  has: (name: string) => boolean;
+}
+
+// Add interface for WebGL capabilities
+interface WebGLCapabilities {
+  isWebGL2: boolean;
+  precision: string;
+  logarithmicDepthBuffer: boolean;
+  maxTextures: number;
+  maxVertexTextures: number;
+  maxTextureSize: number;
+  maxCubemapSize: number;
+  maxAttributes: number;
+  maxVertexUniforms: number;
+  maxVaryings: number;
+  maxFragmentUniforms: number;
+  vertexTextures: boolean;
+  floatFragmentTextures: boolean;
+  floatVertexTextures: boolean;
+}
+
+// Add proper type for WebGL texture properties
+interface WebGLTextureProperties {
+  __webglTexture: WebGLTexture;
+  version: number;
+  [key: string]: any;
+}
+
 /**
  * SplatMesh: Container for one or more splat scenes, abstracting them into a single unified container for
  * splat data. Additionally contains data structures and code to make the splat data renderable as a Three.js mesh.
@@ -133,55 +174,67 @@ export class SplatMesh extends THREE.Mesh {
   maxScreenSpaceSplatSize: number;
   logLevel: LogLevel;
   sphericalHarmonicsDegree: number;
-  minSphericalHarmonicsDegree: number;
-  sceneFadeInRateMultiplier: number;
+  minSphericalHarmonicsDegree = 0;
+  sceneFadeInRateMultiplier = 1.0;
   kernel2DSize: number;
 
   // Scenes and data structures
-  scenes: SplatScene[];
-  splatTree: SplatTree | null;
-  baseSplatTree: SplatTree | null;
-  splatDataTextures: SplatDataTextures | null;
-  distancesTransformFeedback: DistancesTransformFeedback;
+  scenes: SplatScene[] = [];
+  splatTree: SplatTree | null = null;
+  baseSplatTree: SplatTree | null = null;
+  splatDataTextures: SplatDataTextures | null = null;
+  distancesTransformFeedback: DistancesTransformFeedback = {
+    id: null,
+    vertexShader: null,
+    fragmentShader: null,
+    program: null,
+    centersBuffer: null,
+    sceneIndexesBuffer: null,
+    outDistancesBuffer: null,
+    centersLoc: -1,
+    modelViewProjLoc: null,
+    sceneIndexesLoc: -1,
+    transformsLocs: [],
+  };
 
   // Maps and indexes
-  globalSplatIndexToLocalSplatIndexMap: number[];
-  globalSplatIndexToSceneIndexMap: number[];
+  globalSplatIndexToLocalSplatIndexMap: number[] = [];
+  globalSplatIndexToSceneIndexMap: number[] = [];
 
   // Build and render state
-  lastBuildSplatCount: number;
-  lastBuildScenes: SplatScene[];
-  lastBuildMaxSplatCount: number;
-  lastBuildSceneCount: number;
-  firstRenderTime: number;
-  finalBuild: boolean;
-  webGLUtils: any; // Consider creating a specific interface
+  lastBuildSplatCount = 0;
+  lastBuildScenes: SplatScene[] = [];
+  lastBuildMaxSplatCount = 0;
+  lastBuildSceneCount = 0;
+  firstRenderTime = -1;
+  finalBuild = false;
+  webGLUtils: WebGLUtils | null = null;
 
   // Additional properties needed by the build function
-  sceneOptions: any;
-  computeDistancesOnGPUSyncTimeout: any;
+  sceneOptions: SceneOptions[] = [];
+  computeDistancesOnGPUSyncTimeout: NodeJS.Timeout | null = null;
   onSplatTreeReadyCallback: ((splatTree: SplatTree | null) => void) | null =
     null;
 
   // Spatial properties
-  boundingBox: THREE.Box3;
-  calculatedSceneCenter: THREE.Vector3;
-  maxSplatDistanceFromSceneCenter: number;
-  visibleRegionBufferRadius: number;
-  visibleRegionRadius: number;
-  visibleRegionFadeStartRadius: number;
-  visibleRegionChanging: boolean;
+  boundingBox = new THREE.Box3();
+  calculatedSceneCenter = new THREE.Vector3();
+  maxSplatDistanceFromSceneCenter = 0;
+  visibleRegionBufferRadius = 0;
+  visibleRegionRadius = 0;
+  visibleRegionFadeStartRadius = 0;
+  visibleRegionChanging = false;
 
   // Rendering settings
-  splatScale: number;
-  pointCloudModeEnabled: boolean;
+  splatScale = 1.0;
+  pointCloudModeEnabled = false;
 
   // State flags
-  disposed: boolean;
-  lastRenderer: THREE.WebGLRenderer | null;
-  visible: boolean;
+  disposed = false;
+  lastRenderer: THREE.WebGLRenderer | null = null;
+  visible = false;
 
-  material: THREE.Material;
+  material: THREE.Material = dummyMaterial;
 
   constructor(
     splatRenderMode = SplatRenderMode.ThreeD,
@@ -248,62 +301,6 @@ export class SplatMesh extends THREE.Mesh {
 
     // Degree 0 means no spherical harmonics
     this.sphericalHarmonicsDegree = sphericalHarmonicsDegree;
-    this.minSphericalHarmonicsDegree = 0;
-
-    this.sceneFadeInRateMultiplier = sceneFadeInRateMultiplier;
-
-    // The individual splat scenes stored in this splat mesh, each containing their own transform
-    this.scenes = [];
-
-    // Special octree tailored to SplatMesh instances
-    this.splatTree = null;
-    this.baseSplatTree = null;
-
-    // Cache textures and the intermediate data used to populate them
-    this.splatDataTextures = {};
-
-    this.distancesTransformFeedback = {
-      id: null,
-      vertexShader: null,
-      fragmentShader: null,
-      program: null,
-      centersBuffer: null,
-      sceneIndexesBuffer: null,
-      outDistancesBuffer: null,
-      centersLoc: -1,
-      modelViewProjLoc: -1,
-      sceneIndexesLoc: -1,
-      transformsLocs: [],
-    };
-
-    this.globalSplatIndexToLocalSplatIndexMap = [];
-    this.globalSplatIndexToSceneIndexMap = [];
-
-    this.lastBuildSplatCount = 0;
-    this.lastBuildScenes = [];
-    this.lastBuildMaxSplatCount = 0;
-    this.lastBuildSceneCount = 0;
-    this.firstRenderTime = -1;
-    this.finalBuild = false;
-
-    this.webGLUtils = null;
-
-    this.boundingBox = new THREE.Box3();
-    this.calculatedSceneCenter = new THREE.Vector3();
-    this.maxSplatDistanceFromSceneCenter = 0;
-    this.visibleRegionBufferRadius = 0;
-    this.visibleRegionRadius = 0;
-    this.visibleRegionFadeStartRadius = 0;
-    this.visibleRegionChanging = false;
-
-    this.splatScale = 1.0;
-    this.pointCloudModeEnabled = false;
-
-    this.disposed = false;
-    this.lastRenderer = null;
-    this.visible = false;
-
-    this.material = new THREE.Material();
   }
 
   /**
@@ -520,8 +517,8 @@ export class SplatMesh extends THREE.Mesh {
     from: number;
     to: number;
     count: number;
-    centers: any;
-    sceneIndexes: any;
+    centers: Float32Array | Int32Array; // Replaced any with specific types
+    sceneIndexes: Uint32Array; // Replaced any with specific types
   } {
     this.sceneOptions = sceneOptions;
     this.finalBuild = finalBuild;
@@ -653,11 +650,14 @@ export class SplatMesh extends THREE.Mesh {
   freeIntermediateSplatData(): void {
     const deleteTextureData = (texture?: THREE.DataTexture): void => {
       if (texture?.source) {
-        // Use type assertion to allow null assignment
-        (texture.source as any).data = null;
+        // Use type assertion with a proper interface instead of any
+        interface TextureSource {
+          data: ArrayBuffer | null;
+        }
+        (texture.source as TextureSource).data = null;
       }
       if (texture?.image) {
-        // Use type assertion to allow null assignment
+        // Simply use null with type assertion since TextureImageData has complex structure
         (texture as any).image = null;
       }
       if (texture?.onUpdate) {
@@ -665,26 +665,26 @@ export class SplatMesh extends THREE.Mesh {
       }
     };
 
-    // Use null assignment instead of delete for properties that aren't optional
+    // Use undefined assignment instead of null for properties that aren't optional
     if (this.splatDataTextures?.baseData) {
-      this.splatDataTextures.baseData.covariances = null;
-      this.splatDataTextures.baseData.centers = null;
-      this.splatDataTextures.baseData.colors = null;
-      this.splatDataTextures.baseData.sphericalHarmonics = null;
+      this.splatDataTextures.baseData.covariances = undefined;
+      this.splatDataTextures.baseData.centers = undefined;
+      this.splatDataTextures.baseData.colors = undefined;
+      this.splatDataTextures.baseData.sphericalHarmonics = undefined;
     }
 
     if (this.splatDataTextures?.centerColors) {
-      this.splatDataTextures.centerColors.data = null;
+      this.splatDataTextures.centerColors.data = undefined;
     }
 
     if (this.splatDataTextures?.covariances) {
-      this.splatDataTextures.covariances.data = null;
+      this.splatDataTextures.covariances.data = undefined;
     }
     if (this.splatDataTextures?.sphericalHarmonics) {
-      this.splatDataTextures.sphericalHarmonics.data = null;
+      this.splatDataTextures.sphericalHarmonics.data = undefined;
     }
     if (this.splatDataTextures?.sceneIndexes) {
-      this.splatDataTextures.sceneIndexes.data = null;
+      this.splatDataTextures.sceneIndexes.data = undefined;
     }
 
     if (this.splatDataTextures?.centerColors?.texture) {
@@ -1074,6 +1074,7 @@ export class SplatMesh extends THREE.Mesh {
     material.uniforms.centersColorsTextureSize.value.copy(centersColsTexSize);
     material.uniformsNeedUpdate = true;
 
+    // Create SplatDataTextures if it doesn't exist
     this.splatDataTextures = {
       baseData: {
         covariances: covariances,
@@ -1081,7 +1082,7 @@ export class SplatMesh extends THREE.Mesh {
         rotations: rotations,
         centers: centers,
         colors: colors,
-        sphericalHarmonics: shData,
+        sphericalHarmonics: shData as Float32Array | undefined,
       },
       centerColors: {
         data: paddedCentersCols,
@@ -1160,13 +1161,15 @@ export class SplatMesh extends THREE.Mesh {
         covarianceCompressionLevel >= 1 ? 1 : 0;
       material.uniforms.covariancesTextureSize.value.copy(covTexSize);
 
-      this.splatDataTextures["covariances"] = {
-        data: covariancesTextureData,
-        texture: covTex,
-        size: covTexSize,
-        compressionLevel: covarianceCompressionLevel,
-        elementsPerTexel: covariancesElementsPerTexelStored,
-      };
+      if (this.splatDataTextures) {
+        this.splatDataTextures["covariances"] = {
+          data: covariancesTextureData,
+          texture: covTex,
+          size: covTexSize,
+          compressionLevel: covarianceCompressionLevel,
+          elementsPerTexel: covariancesElementsPerTexelStored,
+        };
+      }
     } else {
       // set up scale & rotations data texture
       const elementsPerSplat = 6;
@@ -1209,12 +1212,14 @@ export class SplatMesh extends THREE.Mesh {
         scaleRotationsTexSize
       );
 
-      this.splatDataTextures["scaleRotations"] = {
-        data: paddedScaleRotations,
-        texture: scaleRotationsTex,
-        size: scaleRotationsTexSize,
-        compressionLevel: scaleRotationCompressionLevel,
-      };
+      if (this.splatDataTextures) {
+        this.splatDataTextures["scaleRotations"] = {
+          data: paddedScaleRotations,
+          texture: scaleRotationsTex,
+          size: scaleRotationsTexSize,
+          compressionLevel: scaleRotationCompressionLevel,
+        };
+      }
     }
 
     if (shData) {
@@ -1255,16 +1260,19 @@ export class SplatMesh extends THREE.Mesh {
         );
         shTexture.needsUpdate = true;
         material.uniforms.sphericalHarmonicsTexture.value = shTexture;
-        this.splatDataTextures["sphericalHarmonics"] = {
-          componentCount: shComponentCount,
-          paddedComponentCount: paddedSHComponentCount,
-          data: paddedSHArray,
-          textureCount: 1,
-          texture: shTexture,
-          size: shTexSize,
-          compressionLevel: shCompressionLevel,
-          elementsPerTexel: shElementsPerTexel,
-        };
+
+        if (this.splatDataTextures) {
+          this.splatDataTextures["sphericalHarmonics"] = {
+            componentCount: shComponentCount,
+            paddedComponentCount: paddedSHComponentCount,
+            data: paddedSHArray,
+            textureCount: 1,
+            texture: shTexture,
+            size: shTexSize,
+            compressionLevel: shCompressionLevel,
+            elementsPerTexel: shElementsPerTexel,
+          };
+        }
         // Use three textures for spherical harmonics data, one per color channel
       } else {
         const shComponentCountPerChannel = shComponentCount / 3;
@@ -1293,12 +1301,17 @@ export class SplatMesh extends THREE.Mesh {
             const srcBase = shComponentCount * c;
             const destBase = paddedSHComponentCount * c;
             if (shComponentCountPerChannel >= 3) {
-              for (let i = 0; i < 3; i++)
+              for (let i = 0; i < 3; i++) {
                 paddedSHArray[destBase + i] = shData[srcBase + t * 3 + i];
+              }
               if (shComponentCountPerChannel >= 8) {
-                for (let i = 0; i < 5; i++)
-                  paddedSHArray[destBase + 3 + i] =
-                    shData[srcBase + 9 + t * 5 + i];
+                for (let i = 0; i < 5; i++) {
+                  // Safely access array elements
+                  if (srcBase + 9 + t * 5 + i < shData.length) {
+                    paddedSHArray[destBase + 3 + i] =
+                      shData[srcBase + 9 + t * 5 + i];
+                  }
+                }
               }
             }
           }
@@ -1316,17 +1329,27 @@ export class SplatMesh extends THREE.Mesh {
         }
 
         material.uniforms.sphericalHarmonicsMultiTextureMode.value = 1;
-        this.splatDataTextures["sphericalHarmonics"] = {
-          componentCount: shComponentCount,
-          componentCountPerChannel: shComponentCountPerChannel,
-          paddedComponentCount: paddedSHComponentCount,
-          data: paddedSHArrays,
-          textureCount: 3,
-          textures: shTextures,
-          size: shTexSize,
-          compressionLevel: shCompressionLevel,
-          elementsPerTexel: shElementsPerTexel,
-        };
+
+        if (this.splatDataTextures) {
+          // Use a type cast to satisfy TypeScript
+          const typedArrayData = paddedSHArrays[0] as
+            | Float32Array
+            | Uint8Array
+            | Uint16Array
+            | Uint32Array;
+
+          this.splatDataTextures["sphericalHarmonics"] = {
+            componentCount: shComponentCount,
+            componentCountPerChannel: shComponentCountPerChannel,
+            paddedComponentCount: paddedSHComponentCount,
+            data: typedArrayData,
+            textureCount: 3,
+            textures: shTextures,
+            size: shTexSize,
+            compressionLevel: shCompressionLevel,
+            elementsPerTexel: shElementsPerTexel,
+          };
+        }
       }
 
       material.uniforms.sphericalHarmonicsTextureSize.value.copy(shTexSize);
@@ -1366,11 +1389,14 @@ export class SplatMesh extends THREE.Mesh {
     material.uniforms.sceneIndexesTexture.value = sceneIndexesTexture;
     material.uniforms.sceneIndexesTextureSize.value.copy(sceneIndexesTexSize);
     material.uniformsNeedUpdate = true;
-    this.splatDataTextures["sceneIndexes"] = {
-      data: paddedTransformIndexes,
-      texture: sceneIndexesTexture,
-      size: sceneIndexesTexSize,
-    };
+
+    if (this.splatDataTextures) {
+      this.splatDataTextures["sceneIndexes"] = {
+        data: paddedTransformIndexes,
+        texture: sceneIndexesTexture,
+        size: sceneIndexesTexSize,
+      };
+    }
     material.uniforms.sceneCount.value = this.scenes.length;
   }
 
@@ -1404,8 +1430,8 @@ export class SplatMesh extends THREE.Mesh {
       return Boolean(
         props &&
           typeof props === "object" &&
-          "__webglTexture" in props &&
-          props.__webglTexture
+          "__webglTexture" in (props as object) &&
+          (props as unknown as { __webglTexture: any }).__webglTexture
       );
     };
 
@@ -1437,7 +1463,7 @@ export class SplatMesh extends THREE.Mesh {
           paddedCenterColors,
           centerColorsTexture,
           centerColorsTextureDescriptor.size,
-          centerColorsTextureProps,
+          centerColorsTextureProps as Record<string, unknown>,
           CENTER_COLORS_ELEMENTS_PER_TEXEL,
           CENTER_COLORS_ELEMENTS_PER_SPLAT,
           4,
@@ -1491,7 +1517,7 @@ export class SplatMesh extends THREE.Mesh {
             covarancesTextureDesc.data,
             covariancesTexture,
             covarancesTextureDesc.size,
-            covariancesTextureProps,
+            covariancesTextureProps as Record<string, unknown>,
             elementsPerTexelStored,
             COVARIANCES_ELEMENTS_PER_SPLAT,
             4,
@@ -1506,7 +1532,7 @@ export class SplatMesh extends THREE.Mesh {
               covarancesTextureDesc.data,
               covariancesTexture,
               covarancesTextureDesc.size,
-              covariancesTextureProps,
+              covariancesTextureProps as Record<string, unknown>,
               elementsPerTexelAllocated,
               elementsPerTexelAllocated,
               2,
@@ -1547,7 +1573,7 @@ export class SplatMesh extends THREE.Mesh {
           paddedScaleRotations,
           scaleRotationsTexture,
           scaleRotationsTextureDesc.size,
-          scaleRotationsTextureProps,
+          scaleRotationsTextureProps as Record<string, unknown>,
           SCALES_ROTATIONS_ELEMENTS_PER_TEXEL,
           elementsPerSplat,
           bytesPerElement,
@@ -1582,7 +1608,7 @@ export class SplatMesh extends THREE.Mesh {
             paddedSHArray,
             shTexture,
             shTextureSize,
-            shTextureProps,
+            shTextureProps as Record<string, unknown>,
             elementsPerTexel,
             paddedSHComponentCount,
             shBytesPerElement,
@@ -1613,7 +1639,12 @@ export class SplatMesh extends THREE.Mesh {
             const srcBase = shComponentCount * c;
             const destBase = paddedSHComponentCount * c;
             for (let i = 0; i < shComponentCount; i++) {
-              paddedSHArray[destBase + i] = shData[srcBase + i];
+              // Cast arrays to typed arrays for safe indexing
+              (paddedSHArray as Float32Array | Uint8Array | Uint16Array)[
+                destBase + i
+              ] = (shData as Float32Array | Uint8Array | Uint16Array)[
+                srcBase + i
+              ];
             }
           }
           updateTexture(
@@ -1640,12 +1671,44 @@ export class SplatMesh extends THREE.Mesh {
               const srcBase = shComponentCount * c;
               const destBase = paddedSHComponentCount * c;
               if (shComponentCountPerChannel >= 3) {
-                for (let i = 0; i < 3; i++)
-                  paddedSHArray[destBase + i] = shData[srcBase + t * 3 + i];
+                for (let i = 0; i < 3; i++) {
+                  // Use type assertions for array access
+                  if (
+                    paddedSHArray &&
+                    typeof paddedSHArray === "object" &&
+                    "length" in paddedSHArray
+                  ) {
+                    const typedArray = paddedSHArray as
+                      | Float32Array
+                      | Uint8Array
+                      | Uint16Array;
+                    const typedSHData = shData as
+                      | Float32Array
+                      | Uint8Array
+                      | Uint16Array;
+                    typedArray[destBase + i] = typedSHData[srcBase + t * 3 + i];
+                  }
+                }
                 if (shComponentCountPerChannel >= 8) {
-                  for (let i = 0; i < 5; i++)
-                    paddedSHArray[destBase + 3 + i] =
-                      shData[srcBase + 9 + t * 5 + i];
+                  for (let i = 0; i < 5; i++) {
+                    // Use type assertions for array access
+                    if (
+                      paddedSHArray &&
+                      typeof paddedSHArray === "object" &&
+                      "length" in paddedSHArray
+                    ) {
+                      const typedArray = paddedSHArray as
+                        | Float32Array
+                        | Uint8Array
+                        | Uint16Array;
+                      const typedSHData = shData as
+                        | Float32Array
+                        | Uint8Array
+                        | Uint16Array;
+                      typedArray[destBase + 3 + i] =
+                        typedSHData[srcBase + 9 + t * 5 + i];
+                    }
+                  }
                 }
               }
             }
@@ -1683,7 +1746,7 @@ export class SplatMesh extends THREE.Mesh {
           paddedSceneIndexes,
           sceneIndexesTexture,
           sceneIndexesTexDesc.size,
-          sceneIndexesTextureProps,
+          sceneIndexesTextureProps as Record<string, unknown>,
           1,
           1,
           1,
@@ -1754,7 +1817,7 @@ export class SplatMesh extends THREE.Mesh {
           paddedCenterColors,
           centerColorsTexture,
           centerColorsTextureDescriptor.size,
-          centerColorsTextureProps,
+          centerColorsTextureProps as Record<string, unknown>,
           CENTER_COLORS_ELEMENTS_PER_TEXEL,
           CENTER_COLORS_ELEMENTS_PER_SPLAT,
           4,
@@ -1809,7 +1872,7 @@ export class SplatMesh extends THREE.Mesh {
             covarancesTextureDesc.data,
             covariancesTexture,
             covarancesTextureDesc.size,
-            covariancesTextureProps,
+            covariancesTextureProps as Record<string, unknown>,
             elementsPerTexelStored,
             COVARIANCES_ELEMENTS_PER_SPLAT,
             4,
@@ -1817,19 +1880,21 @@ export class SplatMesh extends THREE.Mesh {
             toSplat
           );
         } else {
-          const elementsPerTexelAllocated =
-            (covarancesTextureDesc as any).elementsPerTexelAllocated || 4;
-          this.updateDataTexture(
-            covarancesTextureDesc.data,
-            covariancesTexture,
-            covarancesTextureDesc.size,
-            covariancesTextureProps,
-            elementsPerTexelAllocated,
-            elementsPerTexelAllocated,
-            2,
-            fromSplat,
-            toSplat
-          );
+          const elementsPerTexelAllocated = (covarancesTextureDesc as any)
+            .elementsPerTexelAllocated;
+          if (elementsPerTexelAllocated) {
+            this.updateDataTexture(
+              covarancesTextureDesc.data,
+              covariancesTexture,
+              covarancesTextureDesc.size,
+              covariancesTextureProps as Record<string, unknown>,
+              elementsPerTexelAllocated,
+              elementsPerTexelAllocated,
+              2,
+              fromSplat,
+              toSplat
+            );
+          }
         }
       }
     }
@@ -1863,7 +1928,7 @@ export class SplatMesh extends THREE.Mesh {
           paddedScaleRotations,
           scaleRotationsTexture,
           scaleRotationsTextureDesc.size,
-          scaleRotationsTextureProps,
+          scaleRotationsTextureProps as Record<string, unknown>,
           SCALES_ROTATIONS_ELEMENTS_PER_TEXEL,
           elementsPerSplat,
           bytesPerElement,
@@ -1898,7 +1963,7 @@ export class SplatMesh extends THREE.Mesh {
             paddedSHArray,
             shTexture,
             shTextureSize,
-            shTextureProps,
+            shTextureProps as Record<string, unknown>,
             elementsPerTexel,
             paddedSHComponentCount,
             shBytesPerElement,
@@ -1925,7 +1990,12 @@ export class SplatMesh extends THREE.Mesh {
           const srcBase = shComponentCount * c;
           const destBase = paddedSHComponentCount * c;
           for (let i = 0; i < shComponentCount; i++) {
-            paddedSHArray[destBase + i] = shData[srcBase + i];
+            // Cast arrays to typed arrays for safe indexing
+            (paddedSHArray as Float32Array | Uint8Array | Uint16Array)[
+              destBase + i
+            ] = (shData as Float32Array | Uint8Array | Uint16Array)[
+              srcBase + i
+            ];
           }
         }
         updateTexture(
@@ -1941,22 +2011,55 @@ export class SplatMesh extends THREE.Mesh {
         shTextureDesc.data &&
         Array.isArray(shTextureDesc.textures) &&
         shTextureDesc.size &&
-        shTextureDesc.elementsPerTexel
+        shTextureDesc.elementsPerTexel &&
+        shTextureDesc.componentCountPerChannel
       ) {
         const shComponentCountPerChannel =
-          shTextureDesc.componentCountPerChannel || 0;
+          shTextureDesc.componentCountPerChannel;
         for (let t = 0; t < 3 && t < shTextureDesc.textures.length; t++) {
           const paddedSHArray = shTextureDesc.data[t];
           for (let c = fromSplat; c <= toSplat; c++) {
             const srcBase = shComponentCount * c;
             const destBase = paddedSHComponentCount * c;
             if (shComponentCountPerChannel >= 3) {
-              for (let i = 0; i < 3; i++)
-                paddedSHArray[destBase + i] = shData[srcBase + t * 3 + i];
+              for (let i = 0; i < 3; i++) {
+                // Use type assertions for array access
+                if (
+                  paddedSHArray &&
+                  typeof paddedSHArray === "object" &&
+                  "length" in paddedSHArray
+                ) {
+                  const typedArray = paddedSHArray as
+                    | Float32Array
+                    | Uint8Array
+                    | Uint16Array;
+                  const typedSHData = shData as
+                    | Float32Array
+                    | Uint8Array
+                    | Uint16Array;
+                  typedArray[destBase + i] = typedSHData[srcBase + t * 3 + i];
+                }
+              }
               if (shComponentCountPerChannel >= 8) {
-                for (let i = 0; i < 5; i++)
-                  paddedSHArray[destBase + 3 + i] =
-                    shData[srcBase + 9 + t * 5 + i];
+                for (let i = 0; i < 5; i++) {
+                  // Use type assertions for array access
+                  if (
+                    paddedSHArray &&
+                    typeof paddedSHArray === "object" &&
+                    "length" in paddedSHArray
+                  ) {
+                    const typedArray = paddedSHArray as
+                      | Float32Array
+                      | Uint8Array
+                      | Uint16Array;
+                    const typedSHData = shData as
+                      | Float32Array
+                      | Uint8Array
+                      | Uint16Array;
+                    typedArray[destBase + 3 + i] =
+                      typedSHData[srcBase + 9 + t * 5 + i];
+                  }
+                }
               }
             }
           }
@@ -1993,7 +2096,7 @@ export class SplatMesh extends THREE.Mesh {
           paddedSceneIndexes,
           sceneIndexesTexture,
           sceneIndexesTexDesc.size,
-          sceneIndexesTextureProps,
+          sceneIndexesTextureProps as Record<string, unknown>,
           1,
           1,
           1,
@@ -2028,8 +2131,11 @@ export class SplatMesh extends THREE.Mesh {
     let maxCompressionLevel = 0;
     for (let i = 0; i < this.scenes.length; i++) {
       const scene = this.getScene(i);
-      // Handle case where compressionLevel may not be defined in TypeScript type
-      const compressionLevel = (scene.splatBuffer as any).compressionLevel || 0;
+      interface SplatBufferWithCompression extends SplatBuffer {
+        compressionLevel: number;
+      }
+      const compressionLevel =
+        (scene.splatBuffer as SplatBufferWithCompression).compressionLevel || 0;
       maxCompressionLevel = Math.max(maxCompressionLevel, compressionLevel);
     }
     return maxCompressionLevel;
@@ -2110,10 +2216,10 @@ export class SplatMesh extends THREE.Mesh {
    * @param to The splat index to end at
    */
   updateDataTexture(
-    paddedData: any,
+    paddedData: Float32Array | Uint8Array | Uint16Array | Uint32Array,
     texture: THREE.DataTexture,
     textureSize: THREE.Vector2,
-    textureProps: any,
+    textureProps: Record<string, unknown>,
     elementsPerTexel: number,
     elementsPerSplat: number,
     bytesPerElement: number,
@@ -2123,11 +2229,11 @@ export class SplatMesh extends THREE.Mesh {
     if (!this.renderer || !this.webGLUtils) return;
 
     // Check if textureProps has the __webglTexture property safely
-    // First ensure textureProps is an object and not null/undefined
     if (!textureProps || typeof textureProps !== "object") return;
 
     // Then check if it has the __webglTexture property
-    const webglTexture = (textureProps as any).__webglTexture;
+    const webglTexture = (textureProps as WebGLTextureProperties)
+      .__webglTexture;
     if (!webglTexture) return;
 
     const gl = this.renderer.getContext();
@@ -2139,11 +2245,35 @@ export class SplatMesh extends THREE.Mesh {
       elementsPerSplat
     );
     const updateElementCount = updateRegion.dataEnd - updateRegion.dataStart;
-    const updateDataView = new paddedData.constructor(
-      paddedData.buffer,
-      updateRegion.dataStart * bytesPerElement,
-      updateElementCount
-    );
+
+    // Fix constructor issue
+    let updateDataView;
+    if (paddedData instanceof Float32Array) {
+      updateDataView = new Float32Array(
+        paddedData.buffer,
+        updateRegion.dataStart * bytesPerElement,
+        updateElementCount
+      );
+    } else if (paddedData instanceof Uint8Array) {
+      updateDataView = new Uint8Array(
+        paddedData.buffer,
+        updateRegion.dataStart * bytesPerElement,
+        updateElementCount
+      );
+    } else if (paddedData instanceof Uint16Array) {
+      updateDataView = new Uint16Array(
+        paddedData.buffer,
+        updateRegion.dataStart * bytesPerElement,
+        updateElementCount
+      );
+    } else {
+      updateDataView = new Uint32Array(
+        paddedData.buffer,
+        updateRegion.dataStart * bytesPerElement,
+        updateElementCount
+      );
+    }
+
     const updateHeight = updateRegion.endRow - updateRegion.startRow + 1;
     const glType = this.webGLUtils.convert(texture.type);
     const glFormat = this.webGLUtils.convert(
@@ -2636,13 +2766,20 @@ export class SplatMesh extends THREE.Mesh {
       if (this.renderer) {
         const gl = this.renderer.getContext();
 
-        // Use type assertions to help TypeScript understand the types
-        const extensions: any = WebGLExtensions(gl);
-        const capabilities: any = WebGLCapabilities(gl, extensions, {});
+        // Use proper types for WebGL extensions and capabilities
+        const extensions: WebGLExtensions = WebGLExtensions(gl);
+        const capabilities: WebGLCapabilities = WebGLCapabilities(
+          gl,
+          extensions,
+          {}
+        );
         extensions.init(capabilities);
 
-        // Type assertion for WebGLUtils
-        this.webGLUtils = new (THREE as any).WebGLUtils(gl, extensions);
+        // Fix WebGLUtils constructor type
+        const ThreeWithUtils = THREE as unknown as {
+          WebGLUtils: WebGLUtilsConstructor;
+        };
+        this.webGLUtils = new ThreeWithUtils.WebGLUtils(gl, extensions);
 
         if (this.enableDistancesComputationOnGPU && this.getSplatCount() > 0) {
           this.setupDistancesComputationTransformFeedback();
@@ -3223,7 +3360,7 @@ export class SplatMesh extends THREE.Mesh {
       gl.flush();
 
       const promise = new Promise<void>((resolve) => {
-        const checkSync = (): number | void => {
+        const checkSync = (): void => {
           if (this.disposed) {
             resolve();
           } else {
@@ -3237,7 +3374,7 @@ export class SplatMesh extends THREE.Mesh {
             switch (status) {
               case gl.TIMEOUT_EXPIRED:
                 this.computeDistancesOnGPUSyncTimeout = setTimeout(checkSync);
-                return this.computeDistancesOnGPUSyncTimeout;
+                return;
               case gl.WAIT_FAILED:
                 throw new Error(
                   "WebGL wait failed during GPU distance computation"

@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { SplatBuffer } from "../SplatBuffer.js";
-import { SplatBufferGenerator } from "../SplatBufferGenerator.js";
-import { SplatParser } from "./SplatParser.js";
+import { SplatBuffer } from "../SplatBuffer";
+import { SplatBufferGenerator } from "../SplatBufferGenerator";
+import { SplatParser } from "./SplatParser";
 import {
   fetchWithProgress,
   delayedExecute,
   nativePromiseWithExtractedComponents,
-} from "../../Util.js";
-import { UncompressedSplatArray } from "../UncompressedSplatArray.js";
-import { LoaderStatus } from "../LoaderStatus.js";
-import { DirectLoadError } from "../DirectLoadError.js";
-import { Constants } from "../../Constants.js";
-import { InternalLoadType } from "../InternalLoadType.js";
-import { AbortablePromise } from "../../AbortablePromise.js";
+} from "../../Util";
+import { UncompressedSplatArray } from "../UncompressedSplatArray";
+import { LoaderStatus } from "../LoaderStatus";
+import { DirectLoadError } from "../DirectLoadError";
+import { Constants } from "../../Constants";
+import { InternalLoadType } from "../InternalLoadType";
+import { AbortablePromise } from "../../AbortablePromise";
 
 /**
  * Finalizes the splat data processing

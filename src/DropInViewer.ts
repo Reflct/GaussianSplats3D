@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { Viewer } from "./Viewer.js";
-import { AbortablePromise } from "./AbortablePromise.js";
+import { Viewer } from "./Viewer";
+import { AbortablePromise } from "./AbortablePromise";
 
 /**
  * Options for DropInViewer that match the requirements of Viewer

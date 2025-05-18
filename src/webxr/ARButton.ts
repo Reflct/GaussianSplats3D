@@ -23,9 +23,33 @@ interface XRSessionInit {
   };
 }
 
+// Create a more complete XRSession interface
+interface XRSession extends EventTarget {
+  end(): Promise<void>;
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void;
+}
+
+// Define WebGLRendererXR interface for the renderer.xr property
+interface WebGLRendererXR {
+  setSession(session: XRSession): Promise<void>;
+  setReferenceSpaceType(type: string): void;
+  enabled?: boolean;
+}
+
 export class ARButton {
   static createButton(
-    renderer: WebGLRenderer,
+    renderer: WebGLRenderer & {
+      xr: WebGLRendererXR;
+    },
     sessionInit: XRSessionInit = {}
   ): HTMLElement {
     const button = document.createElement("button");
@@ -67,9 +91,9 @@ export class ARButton {
         sessionInit.domOverlay = { root: overlay };
       }
 
-      let currentSession: any = null;
+      let currentSession: XRSession | null = null;
 
-      async function onSessionStarted(session: any): Promise<void> {
+      async function onSessionStarted(session: XRSession): Promise<void> {
         session.addEventListener("end", onSessionEnded);
 
         renderer.xr.setReferenceSpaceType("local");
@@ -115,19 +139,29 @@ export class ARButton {
 
       button.onclick = function (): void {
         if (currentSession === null) {
-          // Cast to any to avoid type conflicts
-          const nav = navigator as any;
-          nav.xr
+          // Use type assertion to access navigator.xr
+          (
+            navigator.xr as {
+              requestSession(
+                mode: string,
+                options?: XRSessionInit
+              ): Promise<XRSession>;
+            }
+          )
             .requestSession("immersive-ar", sessionInit)
             .then(onSessionStarted);
         } else {
           currentSession.end();
 
-          // Cast to any to avoid type conflicts
-          const nav = navigator as any;
-          if (nav.xr.offerSession !== undefined) {
-            nav.xr
-              .offerSession("immersive-ar", sessionInit)
+          // Check if offerSession exists as a function
+          const xr = navigator.xr as {
+            offerSession?: (
+              mode: string,
+              options?: XRSessionInit
+            ) => Promise<XRSession>;
+          };
+          if (xr.offerSession !== undefined) {
+            xr.offerSession("immersive-ar", sessionInit)
               .then(onSessionStarted)
               .catch((err: Error) => {
                 console.warn(err);
@@ -136,11 +170,15 @@ export class ARButton {
         }
       };
 
-      // Cast to any to avoid type conflicts
-      const nav = navigator as any;
-      if (nav.xr.offerSession !== undefined) {
-        nav.xr
-          .offerSession("immersive-ar", sessionInit)
+      // Check if offerSession exists as a function
+      const xr = navigator.xr as {
+        offerSession?: (
+          mode: string,
+          options?: XRSessionInit
+        ) => Promise<XRSession>;
+      };
+      if (xr.offerSession !== undefined) {
+        xr.offerSession("immersive-ar", sessionInit)
           .then(onSessionStarted)
           .catch((err: Error) => {
             console.warn(err);
@@ -199,9 +237,8 @@ export class ARButton {
 
       stylizeElement(button);
 
-      // Cast to any to avoid type conflicts
-      const nav = navigator as any;
-      nav.xr
+      // Use inline type assertion
+      (navigator.xr as { isSessionSupported(mode: string): Promise<boolean> })
         .isSessionSupported("immersive-ar")
         .then(function (supported: boolean) {
           supported ? showStartAR() : showARNotSupported();

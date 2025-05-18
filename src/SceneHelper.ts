@@ -1,7 +1,7 @@
 import * as THREE from "three";
 // Use .js extension for imports in TS files since we'll transpile
 import { ArrowHelper } from "./ArrowHelper";
-import { disposeAllMeshes } from "./Util.js";
+import { disposeAllMeshes } from "./Util";
 
 // Define THREE.js uniforms
 interface IUniform<T = any> {

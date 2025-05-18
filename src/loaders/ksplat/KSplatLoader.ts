@@ -1,12 +1,29 @@
-import { SplatBuffer, SplatBufferSection } from "../SplatBuffer.js";
+import { SplatBuffer, SplatBufferSection } from "../SplatBuffer";
 import {
   fetchWithProgress,
   delayedExecute,
   nativePromiseWithExtractedComponents,
-} from "../../Util.js";
-import { LoaderStatus } from "../LoaderStatus.js";
-import { Constants } from "../../Constants.js";
-import { AbortablePromise } from "../../AbortablePromise.js";
+} from "../../Util";
+import { LoaderStatus } from "../LoaderStatus";
+import { Constants } from "../../Constants";
+import { AbortablePromise } from "../../AbortablePromise";
+import * as THREE from "three";
+
+/**
+ * Interface matching the header structure from SplatBuffer
+ */
+interface SplatBufferHeader {
+  versionMajor: number;
+  versionMinor: number;
+  maxSectionCount?: number;
+  sectionCount: number;
+  splatCount: number;
+  maxSplatCount: number;
+  compressionLevel?: number;
+  sceneCenter?: THREE.Vector3;
+  minSphericalHarmonicsCoeff?: number;
+  maxSphericalHarmonicsCoeff?: number;
+}
 
 /**
  * Loader for KSplat files
@@ -59,7 +76,7 @@ export class KSplatLoader {
     let directLoadSplatBuffer: SplatBuffer;
 
     let headerBuffer: ArrayBuffer;
-    let header: any;
+    let header: SplatBufferHeader;
     let headerLoaded = false;
     let headerLoading = false;
 
@@ -125,13 +142,13 @@ export class KSplatLoader {
           sectionHeadersLoading = false;
           sectionHeadersLoaded = true;
           sectionHeadersBuffer = new ArrayBuffer(
-            header.maxSectionCount * SplatBuffer.SectionHeaderSizeBytes
+            (header.maxSectionCount || 0) * SplatBuffer.SectionHeaderSizeBytes
           );
           new Uint8Array(sectionHeadersBuffer).set(
             new Uint8Array(
               bufferData,
               SplatBuffer.HeaderSizeBytes,
-              header.maxSectionCount * SplatBuffer.SectionHeaderSizeBytes
+              (header.maxSectionCount || 0) * SplatBuffer.SectionHeaderSizeBytes
             )
           );
           sectionHeaders = SplatBuffer.parseSectionHeaders(
@@ -141,13 +158,13 @@ export class KSplatLoader {
             false
           );
           let totalSectionStorageStorageByes = 0;
-          for (let i = 0; i < header.maxSectionCount; i++) {
+          for (let i = 0; i < (header.maxSectionCount || 0); i++) {
             totalSectionStorageStorageByes +=
               sectionHeaders[i]?.storageSizeBytes || 0;
           }
           const totalStorageSizeBytes =
             SplatBuffer.HeaderSizeBytes +
-            header.maxSectionCount * SplatBuffer.SectionHeaderSizeBytes +
+            (header.maxSectionCount || 0) * SplatBuffer.SectionHeaderSizeBytes +
             totalSectionStorageStorageByes;
           if (!directLoadBuffer) {
             directLoadBuffer = new ArrayBuffer(totalStorageSizeBytes);
@@ -163,10 +180,10 @@ export class KSplatLoader {
 
           totalBytesToDownload =
             SplatBuffer.HeaderSizeBytes +
-            SplatBuffer.SectionHeaderSizeBytes * header.maxSectionCount;
+            SplatBuffer.SectionHeaderSizeBytes * (header.maxSectionCount || 0);
           for (
             let i = 0;
-            i <= sectionHeaders.length && i < header.maxSectionCount;
+            i <= sectionHeaders.length && i < (header.maxSectionCount || 0);
             i++
           ) {
             totalBytesToDownload += sectionHeaders[i]?.storageSizeBytes || 0;
@@ -217,11 +234,12 @@ export class KSplatLoader {
             if (directLoadSplatBuffer && header?.maxSectionCount) {
               const baseDataOffset =
                 SplatBuffer.HeaderSizeBytes +
-                SplatBuffer.SectionHeaderSizeBytes * header.maxSectionCount;
+                SplatBuffer.SectionHeaderSizeBytes *
+                  (header.maxSectionCount || 0);
               let sectionBase = 0;
               let reachedSections = 0;
               let loadedSplatCount = 0;
-              for (let i = 0; i < header.maxSectionCount; i++) {
+              for (let i = 0; i < (header.maxSectionCount || 0); i++) {
                 const sectionHeader = sectionHeaders[i];
                 if (sectionHeader) {
                   const partiallyFilledBucketCount =
@@ -244,8 +262,9 @@ export class KSplatLoader {
                     const bytesPastSSectionSplatDataStart =
                       numBytesProgressivelyLoaded -
                       bytesRequiredToReachSectionSplatData;
+                    const compressionLevel = header.compressionLevel || 0;
                     const baseDescriptor =
-                      SplatBuffer.CompressionLevels[header.compressionLevel];
+                      SplatBuffer.CompressionLevels[compressionLevel];
                     if (
                       baseDescriptor &&
                       sectionHeader.sphericalHarmonicsDegree !== undefined

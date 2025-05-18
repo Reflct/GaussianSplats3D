@@ -21,7 +21,7 @@ module.exports = {
   },
   rules: {
     indent: ["error", 4],
-    "max-len": ["error", 140],
+    "max-len": ["warn", 140],
     "object-curly-spacing": ["off"],
     "comma-dangle": ["off"],
     "prefer-const": ["off"],

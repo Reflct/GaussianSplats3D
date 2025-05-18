@@ -190,6 +190,15 @@ export interface SplatBufferSection {
 }
 
 /**
+ * Interface for section generation options
+ */
+interface SectionGenerationOptions {
+  blockSizeFactor?: number;
+  bucketSizeFactor?: number;
+  [key: string]: unknown;
+}
+
+/**
  * SplatBuffer: Container for splat data from a single scene/file and capable of (mediocre) compression.
  */
 export class SplatBuffer {
@@ -2245,7 +2254,7 @@ export class SplatBuffer {
     sceneCenter: THREE.Vector3,
     blockSize?: number,
     bucketSize?: number,
-    options: any[] = []
+    options: SectionGenerationOptions[] = []
   ): SplatBuffer {
     let shDegree = 0;
     for (let sa = 0; sa < splatArrays.length; sa++) {

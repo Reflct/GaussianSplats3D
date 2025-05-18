@@ -1,4 +1,11 @@
 /**
+ * Generic interface for WebGL extensions
+ */
+interface WebGLExtensionBase {
+  [key: string]: unknown;
+}
+
+/**
  * Interface for WebGLCapabilities object, as needed by the init method
  */
 interface WebGLCapabilitiesForInit {
@@ -11,7 +18,7 @@ interface WebGLCapabilitiesForInit {
 interface WebGLExtensionsInterface {
   has: (name: string) => boolean;
   init: (capabilities: WebGLCapabilitiesForInit) => void;
-  get: (name: string) => any;
+  get: (name: string) => WebGLExtensionBase | null;
 }
 
 /**
@@ -20,14 +27,14 @@ interface WebGLExtensionsInterface {
 function WebGLExtensions(
   gl: WebGLRenderingContext | WebGL2RenderingContext
 ): WebGLExtensionsInterface {
-  const extensions: Record<string, any> = {};
+  const extensions: Record<string, WebGLExtensionBase | null> = {};
 
-  function getExtension(name: string): any {
+  function getExtension(name: string): WebGLExtensionBase | null {
     if (extensions[name] !== undefined) {
       return extensions[name];
     }
 
-    let extension: any;
+    let extension: WebGLExtensionBase | null = null;
 
     switch (name) {
       case "WEBGL_depth_texture":
@@ -91,7 +98,7 @@ function WebGLExtensions(
       getExtension("WEBGL_multisampled_render_to_texture");
     },
 
-    get: function (name: string): any {
+    get: function (name: string): WebGLExtensionBase | null {
       const extension = getExtension(name);
 
       if (extension === null) {
@@ -105,4 +112,9 @@ function WebGLExtensions(
   };
 }
 
-export { WebGLExtensions, WebGLExtensionsInterface, WebGLCapabilitiesForInit };
+export {
+  WebGLExtensions,
+  WebGLExtensionsInterface,
+  WebGLCapabilitiesForInit,
+  WebGLExtensionBase,
+};

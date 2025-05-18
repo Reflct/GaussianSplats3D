@@ -1,11 +1,11 @@
 import * as THREE from "three";
-import { fetchWithProgress, delayedExecute, clamp } from "../../Util.js";
-import { SplatBuffer } from "../SplatBuffer.js";
-import { SplatBufferGenerator } from "../SplatBufferGenerator.js";
-import { LoaderStatus } from "../LoaderStatus.js";
-import { UncompressedSplatArray } from "../UncompressedSplatArray.js";
-import { decompressGzipped } from "../Compression.js";
-import { AbortablePromise } from "../../AbortablePromise.js";
+import { fetchWithProgress, delayedExecute, clamp } from "../../Util";
+import { SplatBuffer } from "../SplatBuffer";
+import { SplatBufferGenerator } from "../SplatBufferGenerator";
+import { LoaderStatus } from "../LoaderStatus";
+import { UncompressedSplatArray } from "../UncompressedSplatArray";
+import { decompressGzipped } from "../Compression";
+import { AbortablePromise } from "../../AbortablePromise";
 
 const SPZ_MAGIC = 1347635022;
 const FLAG_ANTIALIASED = 1;

@@ -1,4 +1,4 @@
-import { fadeElement } from "./Util.js";
+import { fadeElement } from "./Util";
 
 const STANDARD_FADE_DURATION = 500;
 

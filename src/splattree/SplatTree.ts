@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { delayedExecute } from "../Util.js";
+import { delayedExecute } from "../Util";
 
 /**
  * Interface for SplatTreeNode data

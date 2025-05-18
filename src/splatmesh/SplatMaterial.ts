@@ -6,10 +6,24 @@ interface ShaderUniform<T> {
   value: T;
 }
 
+// Type for possible uniform values (non-array types)
+type UniformValueSingle =
+  | number
+  | THREE.Vector2
+  | THREE.Vector3
+  | THREE.Color
+  | null;
+
+// Type for possible uniform values (array types)
+type UniformValueArray = number[] | THREE.Matrix4[];
+
+// Combined uniform value type
+type UniformValue = UniformValueSingle | UniformValueArray;
+
 // Type for the collection of uniforms
-type UniformsType = {
-  [uniform: string]: ShaderUniform<any>;
-};
+interface UniformsType {
+  [uniform: string]: ShaderUniform<UniformValue>;
+}
 
 export class SplatMaterial {
   static buildVertexShaderBase(
@@ -303,7 +317,7 @@ export class SplatMaterial {
     splatScale = 1.0,
     pointCloudModeEnabled = false
   ): UniformsType {
-    const uniforms: UniformsType = {
+    const uniforms = {
       sceneCenter: {
         value: new THREE.Vector3(),
       },
@@ -341,10 +355,10 @@ export class SplatMaterial {
         value: null,
       },
       sphericalHarmonics8BitCompressionRangeMin: {
-        value: [],
+        value: [] as number[],
       },
       sphericalHarmonics8BitCompressionRangeMax: {
-        value: [],
+        value: [] as number[],
       },
       focal: {
         value: new THREE.Vector2(),
@@ -394,14 +408,14 @@ export class SplatMaterial {
       sceneCount: {
         value: 1,
       },
-    };
+    } as UniformsType;
     for (let i = 0; i < Constants.MaxScenes; i++) {
-      uniforms.sphericalHarmonics8BitCompressionRangeMin.value.push(
-        -Constants.SphericalHarmonics8BitCompressionRange / 2.0
-      );
-      uniforms.sphericalHarmonics8BitCompressionRangeMax.value.push(
-        Constants.SphericalHarmonics8BitCompressionRange / 2.0
-      );
+      (
+        uniforms.sphericalHarmonics8BitCompressionRangeMin.value as number[]
+      ).push(-Constants.SphericalHarmonics8BitCompressionRange / 2.0);
+      (
+        uniforms.sphericalHarmonics8BitCompressionRangeMax.value as number[]
+      ).push(Constants.SphericalHarmonics8BitCompressionRange / 2.0);
     }
 
     if (enableOptionalEffects) {
@@ -411,7 +425,7 @@ export class SplatMaterial {
       }
       uniforms["sceneOpacity"] = {
         value: sceneOpacity,
-      };
+      } as ShaderUniform<number[]>;
 
       const sceneVisibility: number[] = [];
       for (let i = 0; i < Constants.MaxScenes; i++) {
@@ -419,7 +433,7 @@ export class SplatMaterial {
       }
       uniforms["sceneVisibility"] = {
         value: sceneVisibility,
-      };
+      } as ShaderUniform<number[]>;
     }
 
     if (dynamicMode) {
@@ -429,7 +443,7 @@ export class SplatMaterial {
       }
       uniforms["transforms"] = {
         value: transformMatrices,
-      };
+      } as ShaderUniform<THREE.Matrix4[]>;
     }
 
     return uniforms;

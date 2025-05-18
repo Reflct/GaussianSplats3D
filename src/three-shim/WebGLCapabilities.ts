@@ -1,9 +1,24 @@
 /**
+ * Type for WebGL Extension objects
+ */
+interface WebGLExtensionObject {
+  [key: string]: unknown;
+}
+
+/**
+ * Interface for texture filter anisotropic extension
+ */
+interface EXTTextureFilterAnisotropic {
+  MAX_TEXTURE_MAX_ANISOTROPY_EXT: number;
+  TEXTURE_MAX_ANISOTROPY_EXT: number;
+}
+
+/**
  * Interface for WebGL Extensions
  */
 interface WebGLExtensions {
   has(name: string): boolean;
-  get(name: string): any;
+  get(name: string): unknown;
 }
 
 /**
@@ -12,7 +27,7 @@ interface WebGLExtensions {
 interface WebGLCapabilitiesParameters {
   precision?: string;
   logarithmicDepthBuffer?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -50,7 +65,9 @@ function WebGLCapabilities(
     if (maxAnisotropy !== undefined) return maxAnisotropy;
 
     if (extensions.has("EXT_texture_filter_anisotropic") === true) {
-      const extension = extensions.get("EXT_texture_filter_anisotropic");
+      const extension = extensions.get(
+        "EXT_texture_filter_anisotropic"
+      ) as EXTTextureFilterAnisotropic;
       maxAnisotropy = gl.getParameter(extension.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
     } else {
       maxAnisotropy = 0;

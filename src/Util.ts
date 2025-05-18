@@ -78,7 +78,7 @@ export const fetchWithProgress = function (
   const abortController = new AbortController();
   const signal = abortController.signal;
   let aborted = false;
-  const abortHandler = (reason?: any) => {
+  const abortHandler = (reason?: unknown) => {
     abortController.abort(reason);
     aborted = true;
   };
@@ -167,7 +167,7 @@ export const getCurrentTime = function (): number {
 export const disposeAllMeshes = (object3D: THREE.Mesh): void => {
   if (object3D.geometry) {
     object3D.geometry.dispose();
-    object3D.geometry = null as any;
+    (object3D.geometry as THREE.BufferGeometry | null) = null;
   }
   if (object3D.material) {
     if (Array.isArray(object3D.material)) {
@@ -175,7 +175,7 @@ export const disposeAllMeshes = (object3D: THREE.Mesh): void => {
     } else {
       object3D.material.dispose();
     }
-    object3D.material = null as any;
+    (object3D.material as THREE.Material | THREE.Material[] | null) = null;
   }
   if (object3D.children) {
     for (let child of object3D.children) {
@@ -220,7 +220,7 @@ export const getSphericalHarmonicsComponentCountForDegree = (
 
 export const nativePromiseWithExtractedComponents = <T>() => {
   let resolver: (value: T) => void = () => {};
-  let rejecter: (reason?: any) => void = () => {};
+  let rejecter: (reason?: unknown) => void = () => {};
   const promise = new Promise<T>((resolve, reject) => {
     resolver = resolve;
     rejecter = reject;
@@ -232,15 +232,15 @@ export const nativePromiseWithExtractedComponents = <T>() => {
   };
 };
 
-export const abortablePromiseWithExtractedComponents = (
-  abortHandler?: (reason?: any) => void
+export const abortablePromiseWithExtractedComponents = <T>(
+  abortHandler?: (reason?: unknown) => void
 ) => {
-  let resolver: (value: any) => void = () => {};
-  let rejecter: (reason?: any) => void = () => {};
+  let resolver: (value: T) => void = () => {};
+  let rejecter: (reason?: unknown) => void = () => {};
   if (!abortHandler) {
     abortHandler = () => {};
   }
-  const promise = new AbortablePromise((resolve, reject) => {
+  const promise = new AbortablePromise<T>((resolve, reject) => {
     resolver = resolve;
     rejecter = reject;
   }, abortHandler);
