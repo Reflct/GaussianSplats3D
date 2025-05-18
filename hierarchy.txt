@@ -1,0 +1,133 @@
+Module Dependencies and Conversion Status
+=======================================
+
+Core Modules (Entry Points)
+--------------------------
+src/index.js
+├── loaders/
+│   ├── ply/
+│   │   ├── PlyParser.ts ✓ (_PlyParser.js)
+│   │   ├── PlayCanvasCompressedPlyParser.ts ✓ (_PlayCanvasCompressedPlyParser.js)
+│   │   └── PlyLoader.ts ✓ (_PlyLoader.js)
+│   ├── splat/
+│   │   ├── SplatParser.ts ✓ (_SplatParser.js)
+│   │   └── SplatLoader.ts ✓ (_SplatLoader.js)
+│   ├── spz/
+│   │   └── SpzLoader.ts ✓
+│   ├── ksplat/
+│   │   └── KSplatLoader.ts ✓ (_KSplatLoader.js)
+│   └── Utils.ts
+├── Viewer.js
+├── DropInViewer.ts ✓ (_DropInViewer.js)
+├── OrbitControls.ts ✓ (_OrbitControls.js)
+├── AbortablePromise.ts ✓ (_AbortablePromise.js)
+├── SceneFormat.ts
+├── WebXRMode.ts
+├── RenderMode.ts ✓ (_RenderMode.js)
+├── LogLevel.ts ✓ (_LogLevel.js)
+├── SceneRevealMode.ts ✓ (_SceneRevealMode.js)
+└── SplatRenderMode.ts ✓ (_SplatRenderMode.js)
+
+Core Dependencies
+----------------
+src/loaders/
+├── SplatBuffer.ts ✓ (_SplatBuffer.js)
+│   ├── UncompressedSplatArray
+│   ├── Util
+│   └── Constants
+├── DirectLoadError.ts ✓ (_DirectLoadError.js)
+├── LoaderStatus.ts ✓ (_LoaderStatus.js)
+├── SceneFormat.ts ✓ (_SceneFormat.js)
+├── Constants.ts ✓ (_Constants.js)
+├── Util.ts ✓ (_Util.js)
+├── Compression.ts ✓ (_Compression.js)
+├── InternalLoadType.ts ✓ (_InternalLoadType.js)
+├── SplatBufferGenerator.ts ✓ (_SplatBufferGenerator.js)
+├── SplatPartitioner.ts ✓ (_SplatPartitioner.js)
+├── UncompressedSplatArray.ts ✓ (_UncompressedSplatArray.js)
+└── Utils.ts ✓ (_Utils.js)
+
+PLY Parser Dependencies
+----------------------
+src/loaders/ply/
+├── PlayCanvasCompressedPlyParser.ts ✓ (_PlayCanvasCompressedPlyParser.js)
+│   ├── UncompressedSplatArray
+│   ├── SplatBuffer
+│   └── Util
+├── PlyParser.ts ✓ (_PlyParser.js)
+│   ├── PlayCanvasCompressedPlyParser
+│   ├── INRIAV1PlyParser
+│   ├── INRIAV2PlyParser
+│   └── PlyParserUtils
+├── PlyParserUtils.ts ✓ (_PlyParserUtils.js)
+├── PlayCanvasCompressedPlyEncoder.js (already in JS)
+├── INRIAV1PlyParser.ts ✓ (_INRIAV1PlyParser.js)
+├── INRIAV2PlyParser.ts ✓ (_INRIAV2PlyParser.js)
+├── PlyFormat.ts ✓ (_PlyFormat.js)
+└── PlyLoader.ts ✓ (_PlyLoader.js)
+
+Three.js Integration
+------------------
+src/three-shim/
+├── WebGLCapabilities.ts ✓ (_WebGLCapabilities.js)
+└── WebGLExtensions.ts ✓ (_WebGLExtensions.js)
+
+Raycaster Implementation
+-----------------------
+src/raycaster/
+├── Raycaster.ts ✓ (_Raycaster.js)
+├── Ray.ts ✓ (_Ray.js)
+└── Hit.ts ✓ (_Hit.js)
+
+Splat Tree Implementation
+------------------------
+src/splattree/
+└── SplatTree.ts ✓ (_SplatTree.js)
+
+Splat Mesh Implementation
+------------------------
+src/splatmesh/
+├── SplatGeometry.ts ✓ (_SplatGeometry.js)
+├── SplatScene.ts ✓ (_SplatScene.js)
+├── SplatMaterial.ts ✓ (_SplatMaterial.js)
+├── SplatMaterial2D.ts ✓ (_SplatMaterial2D.js)
+├── SplatMaterial3D.ts ✓ (_SplatMaterial3D.js)
+├── SplatTree.ts ✓ (_SplatTree.js)
+└── SplatMesh.ts ✓ (_SplatMesh.js)
+
+WebXR Implementation
+------------------
+src/webxr/
+└── VRButton.ts ✓ (_VRButton.js)
+
+UI Components
+------------
+src/ui/
+├── InfoPanel.ts (converted, original renamed to _InfoPanel.js)
+├── LoadingProgressBar.ts (converted, original renamed to _LoadingProgressBar.js)
+├── LoadingSpinner.ts (converted, original renamed to _LoadingSpinner.js)
+└── Util.ts (converted, original renamed to _Util.js)
+
+Legend:
+✓ - Converted to TypeScript (with corresponding _*.js file)
+- - Not yet converted
+(already in JS) - File was originally in JavaScript format
+
+Dependency Notes:
+1. All loaders depend on SplatBuffer and UncompressedSplatArray
+2. Viewer depends on all loaders and Three.js components
+3. Most modules have dependencies on Util and Constants
+4. PLY parsers form their own dependency tree
+5. Three.js integration is used by Viewer and OrbitControls
+6. Raycaster implementation is used by Viewer for interaction
+7. UI components (InfoPanel, LoadingProgressBar, LoadingSpinner) are used by Viewer for loading feedback and information display
+
+Conversion Status Summary:
+- Core modules: 11/12 converted
+- Core dependencies: 12/12 converted
+- PLY Parser dependencies: 7/7 converted (1 already in JS)
+- Three.js integration: 2/2 converted
+- Raycaster implementation: 3/3 converted
+- Splat Tree: 1/1 converted (already in JS)
+- Splat Mesh: 5/5 converted
+- UI Components: 0/4 converted

@@ -1,0 +1,61 @@
+{
+  "compilerOptions": {
+    // Modern JavaScript features
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+
+    // Strict type checking
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+
+    // Module resolution and paths
+    "baseUrl": ".",
+    "paths": {
+      "*": ["src/types/*"]
+    },
+
+    // Source maps and debugging
+    "sourceMap": true,
+    "inlineSourceMap": false,
+    "inlineSources": true,
+
+    // Additional checks
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Declaration files
+    "declaration": true,
+    "declarationMap": true,
+
+    // Interop constraints
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Experimental features
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Output configuration
+    "outDir": "./build",
+    "rootDir": "./src",
+    "removeComments": false,
+    "preserveConstEnums": true,
+
+    // Skip lib check
+    "skipLibCheck": true
+  },
+
+  "include": ["src/**/*"],
+
+  "exclude": ["node_modules"]
+}
