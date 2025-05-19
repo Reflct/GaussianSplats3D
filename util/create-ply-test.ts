@@ -189,6 +189,38 @@ function testPlyRoundTrip(testPlyPath: string): void {
   const originalBuffer = fs.readFileSync(testPlyPath);
   const originalArrayBuffer = bufferToArrayBuffer(originalBuffer);
 
+  // Parse header to get actual sizes
+  const header =
+    PlayCanvasCompressedPlyParser.decodeHeader(originalArrayBuffer);
+  const headerSize = header.headerSizeBytes;
+
+  // Calculate section sizes from header elements
+  const chunkDataSize = header.chunkElement
+    ? header.chunkElement.storageSizeBytes
+    : 0;
+  const vertexDataSize = header.vertexElement
+    ? header.vertexElement.storageSizeBytes
+    : 0;
+  const shDataSize = header.shElement ? header.shElement.storageSizeBytes : 0;
+
+  console.log("\nPLY Header Analysis:");
+  console.log(`Header size: ${headerSize} bytes`);
+  if (header.chunkElement) {
+    console.log(
+      `Chunk element: ${header.chunkElement.count} chunks, ${chunkDataSize} bytes`
+    );
+  }
+  if (header.vertexElement) {
+    console.log(
+      `Vertex element: ${header.vertexElement.count} vertices, ${vertexDataSize} bytes`
+    );
+  }
+  if (header.shElement) {
+    console.log(
+      `SH element: ${header.shElement.count} components, ${shDataSize} bytes`
+    );
+  }
+
   // Parse to splat buffer with SH degree 3
   const splatBuffer =
     PlayCanvasCompressedPlyParser.parseToUncompressedSplatBuffer(
@@ -202,8 +234,50 @@ function testPlyRoundTrip(testPlyPath: string): void {
     PlayCanvasCompressedPlyEncoder.encodeToCompressedPly(splatBuffer);
   console.log("Encoded back to PLY");
 
+  // Debug: Print raw header bytes
+  const headerBytes = new Uint8Array(encodedBuffer.slice(0, 100));
+  console.log(
+    "Raw header bytes:",
+    Array.from(headerBytes)
+      .map((b) => String.fromCharCode(b))
+      .join("")
+  );
+
+  // Save encoded PLY to file
+  const outputBuffer = new Uint8Array(encodedBuffer);
+  fs.writeFileSync("output.ply", outputBuffer);
+  console.log("Saved encoded PLY to output.ply");
+
+  // Print encoded header line by line
+  console.log("==================================");
+  const encodedHeader =
+    PlayCanvasCompressedPlyParser.decodeHeader(encodedBuffer);
+
   // Compare buffers
   const comparison = compareArrayBuffers(originalArrayBuffer, encodedBuffer);
+
+  // Print section sizes
+  console.log("\nSection Sizes:");
+  console.log("Original file:");
+  console.log(`  Header: ${headerSize} bytes`);
+  console.log(`  Chunk data: ${chunkDataSize} bytes`);
+  console.log(`  Vertex data: ${vertexDataSize} bytes`);
+  console.log(`  SH data: ${shDataSize} bytes`);
+  console.log(
+    `  Total data: ${chunkDataSize + vertexDataSize + shDataSize} bytes`
+  );
+
+  // Calculate encoded file section sizes
+  const encodedDataSize =
+    encodedBuffer.byteLength - encodedHeader.headerSizeBytes;
+  console.log("\nEncoded file:");
+  console.log(`  Header: ${encodedHeader.headerSizeBytes} bytes`);
+  console.log(`  Total data: ${encodedDataSize} bytes`);
+  console.log(
+    `  Difference: ${
+      chunkDataSize + vertexDataSize + shDataSize - encodedDataSize
+    } bytes`
+  );
 
   // Write detailed summary to log.txt
   const logStream = fs.createWriteStream("log.txt");
