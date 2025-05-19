@@ -3,30 +3,30 @@ PLY Round Trip Test Summary
 
 Buffer Size Comparison:
 Original size: 10713391 bytes
-Encoded size: 10713352 bytes
+Encoded size: 10713391 bytes
 
 Detailed Mismatch Analysis:
 ==========================
-Header: 10713391 mismatches
+Header: 65 mismatches
 
 Chunk Data:
   Position:
-    Min: 0 mismatches
-    Max: 0 mismatches
+    Min: 3117 mismatches
+    Max: 3117 mismatches
   Scale:
-    Min: 0 mismatches
-    Max: 0 mismatches
+    Min: 3117 mismatches
+    Max: 3117 mismatches
   Color:
-    Min: 0 mismatches
-    Max: 0 mismatches
+    Min: 3117 mismatches
+    Max: 3117 mismatches
 
 Vertex Data:
-  Position: 0 mismatches
-  Rotation: 0 mismatches
-  Scale: 0 mismatches
-  Color: 0 mismatches
+  Position: 265933 mismatches
+  Rotation: 265933 mismatches
+  Scale: 265933 mismatches
+  Color: 265933 mismatches
 
 Spherical Harmonics:
-  Total: 0 mismatches
-  Components per splat: 0
+  Total: 6382392 mismatches
+  Components per splat: 24
 

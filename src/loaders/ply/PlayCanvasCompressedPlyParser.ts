@@ -201,6 +201,8 @@ export class PlayCanvasCompressedPlyParser {
     for (let i = 1; i < headerLines.length; ++i) {
       const words = headerLines[i].split(" ");
 
+      console.log(words);
+
       switch (words[0]) {
         case "format":
           if (words[1] !== "binary_little_endian") {

@@ -94,7 +94,10 @@ interface ElementStorageArrays {
 }
 
 export class PlayCanvasCompressedPlyEncoder {
-  static encodeToCompressedPly(splatBuffer: SplatBuffer): ArrayBuffer {
+  static encodeToCompressedPly(
+    splatBuffer: SplatBuffer,
+    comments?: string[]
+  ): ArrayBuffer {
     // Get splat count and spherical harmonics degree from the buffer
     const { splatCount, sphericalHarmonicsDegree } =
       this.extractFromUncompressedBuffer(splatBuffer);
@@ -285,7 +288,7 @@ export class PlayCanvasCompressedPlyEncoder {
     );
 
     // Create the final PLY buffer
-    const headerSize = this.calculatePlyHeaderSize(elements);
+    const headerSize = this.calculatePlyHeaderSize(elements, comments);
     const dataSize = this.calculatePlyDataSize(elements);
     const totalSize = headerSize + dataSize;
     const plyBuffer = new ArrayBuffer(totalSize);
@@ -295,7 +298,8 @@ export class PlayCanvasCompressedPlyEncoder {
       plyBuffer,
       elements,
       splatCount,
-      sphericalHarmonicsDegree
+      sphericalHarmonicsDegree,
+      comments
     );
 
     // Write PLY data
@@ -304,13 +308,22 @@ export class PlayCanvasCompressedPlyEncoder {
     return plyBuffer;
   }
 
-  private static calculatePlyHeaderSize(elements: {
-    chunkElement?: PlyElement;
-    vertexElement?: PlyElement;
-    shElement?: PlyElement;
-  }): number {
+  private static calculatePlyHeaderSize(
+    elements: {
+      chunkElement?: PlyElement;
+      vertexElement?: PlyElement;
+      shElement?: PlyElement;
+    },
+    comments?: string[]
+  ): number {
     let size = 0;
     size += "ply\n".length;
+    // Add comment lines if present
+    if (comments && comments.length > 0) {
+      for (const comment of comments) {
+        size += `comment ${comment}\n`.length;
+      }
+    }
     size += "format binary_little_endian 1.0\n".length;
 
     if (elements.chunkElement) {
@@ -364,7 +377,8 @@ export class PlayCanvasCompressedPlyEncoder {
       shElement?: PlyElement;
     },
     splatCount: number,
-    sphericalHarmonicsDegree: number
+    sphericalHarmonicsDegree: number,
+    comments?: string[]
   ): void {
     const encoder = new TextEncoder();
     let offset = 0;
@@ -376,6 +390,23 @@ export class PlayCanvasCompressedPlyEncoder {
       throw new Error("Failed to write PLY magic bytes");
     }
     offset += 4;
+
+    // Write comments if provided
+    if (comments && comments.length > 0) {
+      for (const comment of comments) {
+        const commentLine = `comment ${comment}\n`;
+        const commentHeader = new Uint8Array(
+          buffer,
+          offset,
+          commentLine.length
+        );
+        const commentResult = encoder.encodeInto(commentLine, commentHeader);
+        if (commentResult.written !== commentLine.length) {
+          throw new Error("Failed to write comment line");
+        }
+        offset += commentLine.length;
+      }
+    }
 
     // Write format line
     const formatLine = "format binary_little_endian 1.0\n";
@@ -1007,7 +1038,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_r",
           storage: minR,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxR)
         chunkElement.properties.push({
@@ -1015,7 +1046,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_r",
           storage: maxR,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (minG)
         chunkElement.properties.push({
@@ -1023,7 +1054,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_g",
           storage: minG,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxG)
         chunkElement.properties.push({
@@ -1031,7 +1062,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_g",
           storage: maxG,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (minB)
         chunkElement.properties.push({
@@ -1039,7 +1070,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_b",
           storage: minB,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxB)
         chunkElement.properties.push({
@@ -1047,7 +1078,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_b",
           storage: maxB,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
     }
 
@@ -1060,7 +1091,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_x",
           storage: minX,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxX)
         chunkElement.properties.push({
@@ -1068,7 +1099,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_x",
           storage: maxX,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (minY)
         chunkElement.properties.push({
@@ -1076,7 +1107,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_y",
           storage: minY,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxY)
         chunkElement.properties.push({
@@ -1084,7 +1115,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_y",
           storage: maxY,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (minZ)
         chunkElement.properties.push({
@@ -1092,7 +1123,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_z",
           storage: minZ,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxZ)
         chunkElement.properties.push({
@@ -1100,7 +1131,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_z",
           storage: maxZ,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
     }
 
@@ -1119,7 +1150,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_scale_x",
           storage: minScaleX,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxScaleX)
         chunkElement.properties.push({
@@ -1127,7 +1158,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_scale_x",
           storage: maxScaleX,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (minScaleY)
         chunkElement.properties.push({
@@ -1135,7 +1166,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_scale_y",
           storage: minScaleY,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxScaleY)
         chunkElement.properties.push({
@@ -1143,7 +1174,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_scale_y",
           storage: maxScaleY,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (minScaleZ)
         chunkElement.properties.push({
@@ -1151,7 +1182,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "min_scale_z",
           storage: minScaleZ,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
       if (maxScaleZ)
         chunkElement.properties.push({
@@ -1159,7 +1190,7 @@ export class PlayCanvasCompressedPlyEncoder {
           name: "max_scale_z",
           storage: maxScaleZ,
           byteSize: 4,
-          storageSizeBytes: 4 * chunkElement.count,
+          storageSizeByes: 4 * chunkElement.count,
         });
     }
 
@@ -1170,7 +1201,7 @@ export class PlayCanvasCompressedPlyEncoder {
         name: "packed_position",
         storage: storageArrays.position,
         byteSize: 4,
-        storageSizeBytes: 4 * count,
+        storageSizeByes: 4 * count,
       });
     }
     if (storageArrays.rotation) {
@@ -1179,7 +1210,7 @@ export class PlayCanvasCompressedPlyEncoder {
         name: "packed_rotation",
         storage: storageArrays.rotation,
         byteSize: 4,
-        storageSizeBytes: 4 * count,
+        storageSizeByes: 4 * count,
       });
     }
     if (storageArrays.scale) {
@@ -1188,7 +1219,7 @@ export class PlayCanvasCompressedPlyEncoder {
         name: "packed_scale",
         storage: storageArrays.scale,
         byteSize: 4,
-        storageSizeBytes: 4 * count,
+        storageSizeByes: 4 * count,
       });
     }
     if (storageArrays.color) {
@@ -1197,7 +1228,7 @@ export class PlayCanvasCompressedPlyEncoder {
         name: "packed_color",
         storage: storageArrays.color,
         byteSize: 4,
-        storageSizeBytes: 4 * count,
+        storageSizeByes: 4 * count,
       });
     }
 
@@ -1215,7 +1246,7 @@ export class PlayCanvasCompressedPlyEncoder {
             name: fRestKey,
             storage: fRest,
             byteSize: 1,
-            storageSizeBytes: count,
+            storageSizeByes: count,
           });
         }
       }
@@ -1223,18 +1254,18 @@ export class PlayCanvasCompressedPlyEncoder {
 
     // Calculate storage sizes
     chunkElement.storageSizeBytes = chunkElement.properties.reduce(
-      (sum: number, prop: { storageSizeBytes: number }) =>
-        sum + prop.storageSizeBytes,
+      (sum: number, prop: { storageSizeByes: number }) =>
+        sum + prop.storageSizeByes,
       0
     );
     vertexElement.storageSizeBytes = vertexElement.properties.reduce(
-      (sum: number, prop: { storageSizeBytes: number }) =>
-        sum + prop.storageSizeBytes,
+      (sum: number, prop: { storageSizeByes: number }) =>
+        sum + prop.storageSizeByes,
       0
     );
     shElement.storageSizeBytes = shElement.properties.reduce(
-      (sum: number, prop: { storageSizeBytes: number }) =>
-        sum + prop.storageSizeBytes,
+      (sum: number, prop: { storageSizeByes: number }) =>
+        sum + prop.storageSizeByes,
       0
     );
 

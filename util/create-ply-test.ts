@@ -221,6 +221,19 @@ function testPlyRoundTrip(testPlyPath: string): void {
     );
   }
 
+  // Extract comments from the original header
+  const originalHeaderText = new TextDecoder().decode(
+    originalArrayBuffer.slice(0, headerSize)
+  );
+  originalHeaderText.split("\n").forEach((line, i) => {
+    console.log(`${i + 1}: ${line}`);
+  });
+
+  const commentLines = originalHeaderText
+    .split("\n")
+    .filter((line) => line.startsWith("comment "))
+    .map((line) => line.replace(/^comment /, ""));
+
   // Parse to splat buffer with SH degree 3
   const splatBuffer =
     PlayCanvasCompressedPlyParser.parseToUncompressedSplatBuffer(
@@ -229,9 +242,11 @@ function testPlyRoundTrip(testPlyPath: string): void {
     );
   console.log("Parsed to splat buffer");
 
-  // Encode back to PLY
-  const encodedBuffer =
-    PlayCanvasCompressedPlyEncoder.encodeToCompressedPly(splatBuffer);
+  // Encode back to PLY, passing comments
+  const encodedBuffer = PlayCanvasCompressedPlyEncoder.encodeToCompressedPly(
+    splatBuffer,
+    commentLines
+  );
   console.log("Encoded back to PLY");
 
   // Debug: Print raw header bytes
@@ -249,9 +264,79 @@ function testPlyRoundTrip(testPlyPath: string): void {
   console.log("Saved encoded PLY to output.ply");
 
   // Print encoded header line by line
+  console.log("\nENCODED PLY HEADER (line by line):");
   console.log("==================================");
   const encodedHeader =
     PlayCanvasCompressedPlyParser.decodeHeader(encodedBuffer);
+  const encodedHeaderText = new TextDecoder().decode(
+    encodedBuffer.slice(0, encodedHeader.headerSizeBytes)
+  );
+  encodedHeaderText.split("\n").forEach((line, i) => {
+    console.log(`${i + 1}: ${line}`);
+  });
+
+  // Print original header line by line
+  console.log("\nORIGINAL PLY HEADER (line by line):");
+  console.log("==================================");
+  const originalHeaderLines = originalHeaderText.split("\n");
+  const encodedHeaderLines = encodedHeaderText.split("\n");
+  let headerMismatchCount = 0;
+  const maxHeaderLines = Math.max(
+    originalHeaderLines.length,
+    encodedHeaderLines.length
+  );
+  for (let i = 0; i < maxHeaderLines; i++) {
+    const orig = originalHeaderLines[i] || "";
+    const enc = encodedHeaderLines[i] || "";
+    if (orig !== enc) {
+      headerMismatchCount++;
+      console.log(
+        `Line ${i + 1}:\n  Original: '${orig}'\n  Encoded:  '${enc}'`
+      );
+    }
+  }
+  if (headerMismatchCount === 0) {
+    console.log("Headers match exactly (line by line).");
+  } else {
+    console.log(`Total header line mismatches: ${headerMismatchCount}`);
+  }
+
+  // Byte-by-byte comparison
+  console.log("\nBYTE-BY-BYTE COMPARISON:");
+  console.log("========================");
+  const minLength = Math.min(
+    originalArrayBuffer.byteLength,
+    encodedBuffer.byteLength
+  );
+  let byteMismatchCount = 0;
+  for (let i = 0; i < minLength; i++) {
+    if (
+      new Uint8Array(originalArrayBuffer)[i] !==
+      new Uint8Array(encodedBuffer)[i]
+    ) {
+      if (byteMismatchCount < 10) {
+        console.log(
+          `Byte ${i}: Original=${
+            new Uint8Array(originalArrayBuffer)[i]
+          }, Encoded=${new Uint8Array(encodedBuffer)[i]}`
+        );
+      }
+      byteMismatchCount++;
+    }
+  }
+  if (originalArrayBuffer.byteLength !== encodedBuffer.byteLength) {
+    console.log(
+      `File size mismatch: Original=${originalArrayBuffer.byteLength}, Encoded=${encodedBuffer.byteLength}`
+    );
+  }
+  if (
+    byteMismatchCount === 0 &&
+    originalArrayBuffer.byteLength === encodedBuffer.byteLength
+  ) {
+    console.log("Files match exactly (byte by byte).");
+  } else {
+    console.log(`Total byte mismatches: ${byteMismatchCount}`);
+  }
 
   // Compare buffers
   const comparison = compareArrayBuffers(originalArrayBuffer, encodedBuffer);
@@ -270,8 +355,20 @@ function testPlyRoundTrip(testPlyPath: string): void {
   // Calculate encoded file section sizes
   const encodedDataSize =
     encodedBuffer.byteLength - encodedHeader.headerSizeBytes;
+  const encodedChunkDataSize = encodedHeader.chunkElement
+    ? encodedHeader.chunkElement.storageSizeBytes
+    : 0;
+  const encodedVertexDataSize = encodedHeader.vertexElement
+    ? encodedHeader.vertexElement.storageSizeBytes
+    : 0;
+  const encodedShDataSize = encodedHeader.shElement
+    ? encodedHeader.shElement.storageSizeBytes
+    : 0;
   console.log("\nEncoded file:");
   console.log(`  Header: ${encodedHeader.headerSizeBytes} bytes`);
+  console.log(`  Chunk data: ${encodedChunkDataSize} bytes`);
+  console.log(`  Vertex data: ${encodedVertexDataSize} bytes`);
+  console.log(`  SH data: ${encodedShDataSize} bytes`);
   console.log(`  Total data: ${encodedDataSize} bytes`);
   console.log(
     `  Difference: ${
